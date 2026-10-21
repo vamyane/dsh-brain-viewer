@@ -1,0 +1,5 @@
+# dsh-brain 组合补丁层：随插件包分发，安装后自动挂载。
+# 本层只启用插件；浏览器半边在 lib/client.js，注册左侧栏入口和全屏面板。
+- insert:
+    - id: brain
+      name: dsh-brain-viewer

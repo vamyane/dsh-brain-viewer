@@ -1,0 +1,73 @@
+{
+  "name": "dsh-brain-viewer",
+  "version": "0.2.2",
+  "description": "AI brain viewer for DeepSeek Harness: a brain-shaped relationship graph in the left sidebar, plus a Markdown knowledge-base pipeline (import -> compile -> graph).",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "icon": "assets/icon.png",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "app/brain.html",
+    "brain/vault",
+    "brain/*.py",
+    "brain/brain_shape.json",
+    "brain/viewer_template.html",
+    "build.mjs",
+    "tools/*.mjs",
+    "cordis.patch.yml",
+    "assets/icon.png",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "lib/client.template.js"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "demo": "node tools/rebuild.mjs --demo",
+    "test": "node test/smoke.mjs",
+    "pack:check": "npm pack --dry-run",
+    "watch": "node tools/watch.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "brain",
+    "knowledge-base",
+    "knowledge-graph",
+    "obsidian",
+    "memory",
+    "markdown",
+    "dsh-plugin",
+    "dsh-plugin-panel"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.0-rc.2 <0.3.0-0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0 <5"
+  },
+  "license": "MIT"
+}
