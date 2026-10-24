@@ -57,13 +57,13 @@ is updated. **Refresh the DSH page** to see new nodes.
 > This is near-real-time because the client HTML is embedded at build time. Fully live
 > updates (runtime `graph.json` + client polling) are on the roadmap.
 
-## Performance (v0.2.2)
+## Performance (v0.2.3)
 
-- `brain.html` is embedded as gzip+base64, so `client.js` drops from 3.6 MB to ~1 MB and is
-  decompressed only when the panel opens.
-- Large graphs (>2500 nodes) are capped at 30 fps with DPR 1.25; slow frames auto-degrade to 20 fps.
-- Edges are viewport-culled; pulse glows use a cached sprite; rendering pauses when the page is hidden.
-- Closing the panel unmounts the iframe, so it costs no CPU when idle.
+- **WebGL batch rendering**: nodes are instanced quads and links a single `gl.LINES` batch; pan/zoom only updates a matrix instead of rebuilding geometry. A 6,398-node graph renders in **0.6–1.2 ms per frame** (the old Canvas2D path was ~90 ms/frame).
+- **Render on demand**: no `requestAnimationFrame` at all while nothing is animating or interacting (0 frames at rest) — the same strategy as Obsidian's graph view. Continuous frames only while the drift / pulse toggles are on.
+- **Label LOD**: labels appear by zoom threshold, capped at 64 with overlap culling; labels and highlights live on a separate 2D overlay that draws only the few needed.
+- Without WebGL it falls back to batched 2D paths and still renders on demand.
+- `brain.html` is embedded as gzip+base64 and decompressed only when the panel opens; closing the panel unmounts the iframe.
 
 ## Privacy
 

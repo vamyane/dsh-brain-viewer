@@ -1,9 +1,22 @@
 {
   "name": "dsh-brain-viewer",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "AI brain viewer for DeepSeek Harness: a brain-shaped relationship graph in the left sidebar, plus a Markdown knowledge-base pipeline (import -> compile -> graph).",
   "type": "module",
   "main": "lib/index.js",
+  "author": "vamyane",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vamyane/dsh-brain-viewer.git"
+  },
+  "homepage": "https://github.com/vamyane/dsh-brain-viewer#readme",
+  "bugs": {
+    "url": "https://github.com/vamyane/dsh-brain-viewer/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "exports": {
     ".": {
       "default": "./lib/index.js"
