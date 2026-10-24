@@ -1,0 +1,1321 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 大脑 · 关系图谱</title>
+<style>
+  :root{
+    --bg:#eef1f6;
+    --bg2:#e3e9f3;
+    --fg:#0f172a;
+    --muted:#64748b;
+    --faint:#94a3b8;
+    --line:rgba(15,23,42,.10);
+    --panel:rgba(255,255,255,.88);
+    --border:rgba(15,23,42,.10);
+    --chip:rgba(255,255,255,.72);
+    --shadow:0 12px 40px rgba(15,23,42,.12);
+  }
+  body.dark{
+    --bg:#0a101d;
+    --bg2:#111a2c;
+    --fg:#e2e8f0;
+    --muted:#94a3b8;
+    --faint:#64748b;
+    --line:rgba(148,163,184,.14);
+    --panel:rgba(15,23,42,.86);
+    --border:rgba(148,163,184,.18);
+    --chip:rgba(30,41,59,.7);
+    --shadow:0 12px 40px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  body{background:radial-gradient(1200px 800px at 50% 38%, var(--bg2), var(--bg) 70%)}
+  /* 三层画布：背景轮廓(2D) / 节点+连线(WebGL) / 标签+高亮(2D) */
+  #bg,#gl,#c{position:fixed;inset:0;display:block}
+  #bg{z-index:0;pointer-events:none}
+  #gl{z-index:1;pointer-events:none}
+  #c{z-index:2;cursor:grab}
+  #c.dragging{cursor:grabbing}
+
+  .glass{background:var(--panel);border:1px solid var(--border);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+
+  header{position:fixed;left:22px;top:18px;z-index:5;pointer-events:none;user-select:none}
+  header .brand{display:flex;align-items:center;gap:10px}
+  header .logo{width:13px;height:13px;border-radius:50%;background:#2563eb;
+    box-shadow:0 0 0 4px rgba(37,99,235,.14),0 0 18px rgba(37,99,235,.55)}
+  header h1{margin:0;font-size:19px;font-weight:650;letter-spacing:.3px}
+  header .sub{margin:5px 0 0 23px;font-size:12px;color:var(--muted);letter-spacing:.2px}
+  header .stat{margin:9px 0 0 23px;font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+
+  .topright{position:fixed;right:18px;top:16px;z-index:6;display:flex;gap:8px;align-items:center}
+  .search{position:relative}
+  .search input{width:208px;height:34px;border-radius:10px;border:1px solid var(--border);
+    background:var(--panel);color:var(--fg);padding:0 30px 0 12px;font-size:12.5px;outline:none;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+  .search input::placeholder{color:var(--faint)}
+  .search input:focus{border-color:rgba(37,99,235,.5)}
+  .search .kbd{position:absolute;right:9px;top:9px;font-size:10px;color:var(--faint);
+    border:1px solid var(--border);border-radius:5px;padding:1px 5px}
+  .btn{height:34px;padding:0 11px;border-radius:10px;border:1px solid var(--border);
+    background:var(--panel);color:var(--muted);font-size:12.5px;cursor:pointer;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow);
+    display:flex;align-items:center;gap:6px;transition:.18s}
+  .btn:hover{color:var(--fg);border-color:rgba(37,99,235,.38)}
+  .btn.on{color:#fff;background:#2563eb;border-color:#2563eb}
+
+  #results{position:absolute;right:0;top:40px;width:264px;border-radius:12px;overflow:hidden;
+    background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow);display:none}
+  #results.show{display:block}
+  #results div{padding:8px 12px;font-size:12.5px;cursor:pointer;display:flex;gap:8px;align-items:center}
+  #results div:hover,#results div.sel{background:rgba(37,99,235,.12)}
+  #results .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  #results .cnt{margin-left:auto;color:var(--faint);font-size:11px}
+
+  .legend{position:fixed;left:22px;bottom:20px;z-index:5;display:flex;flex-wrap:wrap;gap:7px;
+    max-width:min(560px,70vw)}
+  .chip{display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:9px;
+    font-size:12px;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--border);
+    background:var(--chip);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:.16s}
+  .chip:hover{color:var(--fg)}
+  .chip .dot{width:8px;height:8px;border-radius:50%;transition:.16s}
+  .chip .n{color:var(--faint);font-size:10.5px;font-variant-numeric:tabular-nums}
+  .chip.off{opacity:.38}
+  .chip.off .dot{box-shadow:none;background:var(--faint)!important}
+
+  .hint{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:4;font-size:11.5px;
+    color:var(--faint);letter-spacing:.3px;user-select:none;pointer-events:none}
+
+  aside#panel{position:fixed;right:18px;top:64px;bottom:18px;width:326px;z-index:7;
+    border-radius:16px;padding:20px 20px 16px;overflow:auto;
+    background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow);
+    backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    transform:translateX(calc(100% + 26px));transition:transform .32s cubic-bezier(.22,.8,.26,1)}
+  aside#panel.show{transform:translateX(0)}
+  aside#panel::-webkit-scrollbar{width:0}
+  #closePanel{position:absolute;right:12px;top:11px;border:0;background:transparent;color:var(--faint);
+    font-size:19px;cursor:pointer;line-height:1;padding:4px}
+  #closePanel:hover{color:var(--fg)}
+  .kicker{font-size:11px;letter-spacing:1.4px;color:var(--faint);text-transform:uppercase;margin-bottom:8px}
+  #panelTitle{margin:0 0 10px;font-size:18px;font-weight:650;line-height:1.35;padding-right:16px}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .tags span{font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:2px 7px}
+  #panelEx{font-size:13px;line-height:1.72;color:var(--muted);margin:0 0 14px;
+    padding:11px 12px;border-radius:10px;background:rgba(37,99,235,.06)}
+  .metaGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+  .metaGrid b{display:block;font-size:10.5px;color:var(--faint);font-weight:500;margin-bottom:2px}
+  .metaGrid i{font-style:normal;font-size:12.5px;color:var(--fg);word-break:break-all}
+  #panelPath{font-size:11px;color:var(--faint);word-break:break-all;line-height:1.6;
+    border-top:1px dashed var(--border);padding-top:11px;margin-bottom:16px}
+  #panelOrig{font-size:11px;color:var(--faint);word-break:break-all;line-height:1.6;
+    margin:-8px 0 16px;display:none}
+  .nbrTitle{font-size:11px;letter-spacing:1px;color:var(--faint);margin:0 0 8px}
+  .nbrList{display:flex;flex-direction:column;gap:2px}
+  .nbrList button{all:unset;display:flex;align-items:center;gap:8px;padding:6px 7px;border-radius:7px;
+    font-size:12.5px;color:var(--muted);cursor:pointer;line-height:1.35}
+  .nbrList button:hover{background:rgba(37,99,235,.10);color:var(--fg)}
+  .nbrList .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .nbrList .d{margin-left:auto;font-size:10.5px;color:var(--faint)}
+
+  #tip{position:fixed;z-index:8;pointer-events:none;padding:6px 10px;border-radius:8px;
+    background:var(--fg);color:var(--bg);font-size:11.5px;opacity:0;transition:opacity .12s;
+    white-space:nowrap;transform:translate(-50%,-160%)}
+  #tip.show{opacity:.94}
+  #tip small{opacity:.65;margin-left:6px;font-size:10.5px}
+
+  @media(max-width:720px){
+    header .sub,header .stat{display:none}
+    .search input{width:140px}
+    .btn span{display:none}
+    aside#panel{width:calc(100% - 36px)}
+  }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<canvas id="gl"></canvas>
+<canvas id="c"></canvas>
+
+<header>
+  <div class="brand"><div class="logo"></div><h1>AI 大脑</h1></div>
+  <div class="sub">关系图谱 · 每个点是一篇 md 记忆</div>
+  <div class="stat" id="stat"></div>
+</header>
+
+<div class="topright">
+  <div class="search">
+    <input id="q" type="text" placeholder="搜索记忆 / 神经元…" autocomplete="off" spellcheck="false">
+    <span class="kbd">/</span>
+    <div id="results"></div>
+  </div>
+  <button class="btn" id="btnFit" title="重置视角">⤢</button>
+  <button class="btn on" id="btnShape" title="大脑轮廓">🧠</button>
+  <button class="btn" id="btnMotion" title="神经元漂移（默认关，另存功耗）">〰</button>
+  <button class="btn" id="btnPulse" title="神经放电动画">⚡</button>
+  <button class="btn on" id="btnLabel" title="显示名称">Aa</button>
+  <button class="btn" id="btnTheme" title="切换明暗">◐</button>
+</div>
+
+<div class="legend" id="legend"></div>
+<div class="hint">滚轮缩放 · 拖拽平移 · 悬停高亮突触 · 拖点会回弹 · 双击聚焦（静止时不重绘）</div>
+
+<aside id="panel">
+  <button id="closePanel" title="关闭">×</button>
+  <div class="kicker" id="panelKind">MEMORY</div>
+  <h2 id="panelTitle"></h2>
+  <div class="tags" id="panelTags"></div>
+  <p id="panelEx"></p>
+  <div class="metaGrid">
+    <div><b>关联节点</b><i id="panelDeg">0</i></div>
+    <div><b>时间</b><i id="panelDate">—</i></div>
+  </div>
+  <div id="panelPath"></div>
+  <div id="panelOrig"></div>
+  <div class="nbrTitle">关联的记忆</div>
+  <div class="nbrList" id="panelNbr"></div>
+</aside>
+
+<div id="tip"></div>
+
+<script id="brain-data" type="application/json"></script>
+<script>/*__BRAIN_API_BOOTSTRAP__*/</script>
+<script>
+/*
+ * viewer v2（2026-10-25）—— 渲染架构照 Obsidian 关系图谱那套思路重做：
+ *   1) 节点/连线/脉冲全部用 WebGL 一次性批量画（instanced quads + LINES），
+ *      缩放/平移只改 uniform 矩阵，不重建任何几何；
+ *   2) 按需渲染：没有动画、没有交互时完全不跑 requestAnimationFrame（静止 = 0 帧）；
+ *   3) LOD：标签只在需要的缩放下出现，且有数量上限；
+ *   4) 平移/缩放/悬停/选中都只触发一次重绘，不再有常驻 60fps 全量重绘。
+ * 布局坐标仍由 build_graph.py 离线算好（运行时不需要物理，这一点比 Obsidian 更省）。
+ * 若浏览器没有 WebGL，退回 2D 批量绘制（按类型合并 path）。
+ *
+ * v3（2026-10-25）：数据两种来源——
+ *   · 独立打开（build_graph.py 生成的 brain.html）：数据内嵌，离线可用；
+ *   · DSH 面板（插件内嵌 app/viewer.html）：数据为空 → 打开时 fetch 宿主路由
+ *     /api/dsh-brain/graph，读的是插件 brain/graph.json（或配置里的 graphPath）——
+ *     写完记忆重开面板就是最新，不用重建、不用刷新页面。
+ */
+function boot(DATA){
+  "use strict";
+  if (!DATA || !DATA.nodes || !DATA.nodes.length) {
+    showBootError('图谱是空的（0 个节点）。先跑一次管线：<code>node tools/rebuild.mjs --demo</code> 或 <code>--workspace 你的目录</code>。');
+    return;
+  }
+
+  var NODES = DATA.nodes, EDGES = DATA.edges;
+  var SHAPE = DATA.shape || null;
+  var shapeLight = null, shapeDark = null, showShape = true;
+  if (SHAPE) {
+    shapeLight = new Image(); shapeLight.onload = function(){ invalidate(); }; shapeLight.src = SHAPE.light;
+    shapeDark = new Image(); shapeDark.onload = function(){ invalidate(); }; shapeDark.src = SHAPE.dark;
+  }
+  var TYPES = {
+    project:    {label:'项目',  light:'#1d4ed8', dark:'#60a5fa'},
+    concept:    {label:'概念',  light:'#0f766e', dark:'#2dd4bf'},
+    tool:       {label:'工具',  light:'#6d28d9', dark:'#a78bfa'},
+    person:     {label:'人',    light:'#b45309', dark:'#fbbf24'},
+    decision:   {label:'决策',  light:'#b91c1c', dark:'#f87171'},
+    preference: {label:'偏好',  light:'#be185d', dark:'#f472b6'},
+    skill:      {label:'技能',  light:'#c2410c', dark:'#fb923c'},
+    source:     {label:'资料',  light:'#475569', dark:'#94a3b8'},
+    episode:    {label:'记忆',  light:'#334155', dark:'#94a3b8'}
+  };
+  var ORDER = ['project','concept','tool','skill','person','decision','preference','source','episode'];
+  function hex2rgb(h){
+    return [parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255];
+  }
+  var COL = {};
+  ORDER.forEach(function(k){ COL[k] = {light:hex2rgb(TYPES[k].light), dark:hex2rgb(TYPES[k].dark)}; });
+
+  var bgC = document.getElementById('bg'), bgx = bgC.getContext('2d');
+  var glC = document.getElementById('gl');
+  var ovC = document.getElementById('c'), ovx = ovC.getContext('2d');
+  var tip = document.getElementById('tip');
+  var resultsEl = document.getElementById('results');
+  var qEl = document.getElementById('q');
+
+  var W = 0, H = 0;
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var BIG_GRAPH = NODES.length > 2500;
+
+  var cam = {x:0, y:0, z:1};
+  var fitZ = 1, camAnim = null;
+  var hover = -1, selected = -1;
+  var visible = {};
+  ORDER.forEach(function(k){ visible[k] = true; });
+  var showLabels = true, pulsesOn = false, motionOn = false, dark = false;
+
+  // ---------------- 预处理
+  NODES.forEach(function(n,i){ n.i = i; n.deg = n.d || 0; });
+  var adj = NODES.map(function(){ return []; });
+  EDGES.forEach(function(e){ adj[e[0]].push(e[1]); adj[e[1]].push(e[0]); });
+
+  // ---------------- 位置状态（漂移 / 拖拽位移）
+  var N = NODES.length;
+  var animX = new Float32Array(N), animY = new Float32Array(N);
+  var dispX = new Float32Array(N), dispY = new Float32Array(N);
+  var phase = new Float32Array(N);
+  for (var _i=0; _i<N; _i++){
+    animX[_i] = NODES[_i].x; animY[_i] = NODES[_i].y;
+    phase[_i] = (_i * 1.6180339) % 6.2832;
+  }
+  var dragNode = -1, dispDirty = false;
+
+  var coreEdges = [], leafEdges = [];
+  EDGES.forEach(function(e){
+    var a = NODES[e[0]], b = NODES[e[1]];
+    if (a.k !== 'episode' && b.k !== 'episode') coreEdges.push(e);
+    else leafEdges.push(e);
+  });
+
+  // 边界
+  var B = {minx:1e9,miny:1e9,maxx:-1e9,maxy:-1e9};
+  NODES.forEach(function(n){
+    if(n.x<B.minx)B.minx=n.x; if(n.x>B.maxx)B.maxx=n.x;
+    if(n.y<B.miny)B.miny=n.y; if(n.y>B.maxy)B.maxy=n.y;
+  });
+  if (SHAPE && SHAPE.rect) {
+    B.minx = SHAPE.rect[0]; B.miny = SHAPE.rect[1];
+    B.maxx = SHAPE.rect[0] + SHAPE.rect[2]; B.maxy = SHAPE.rect[1] + SHAPE.rect[3];
+  }
+  var CW = Math.max(B.maxx-B.minx, 10), CH = Math.max(B.maxy-B.miny, 10);
+  var CCX = (B.minx+B.maxx)/2, CCY = (B.miny+B.maxy)/2;
+
+  // ---------------- 辅助
+  function color(kind){
+    var t = TYPES[kind] || TYPES.episode;
+    return dark ? t.dark : t.light;
+  }
+  function isLeafKind(k){ return k === 'episode' || k === 'source'; }
+  function radius(n){
+    var r = isLeafKind(n.k) ? 2.15 + 0.45*Math.log1p(n.deg) : 3.8 + 0.72*Math.log1p(n.deg);
+    return Math.max(1.9, Math.min(r, 12));
+  }
+  function sx(x){ return W/2 + cam.x + x*cam.z; }
+  function sy(y){ return H/2 + cam.y + y*cam.z; }
+
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    [bgC, glC, ovC].forEach(function(c){
+      c.width = Math.floor(W*dpr); c.height = Math.floor(H*dpr);
+      c.style.width = W+'px'; c.style.height = H+'px';
+    });
+    bgx.setTransform(dpr,0,0,dpr,0,0);
+    ovx.setTransform(dpr,0,0,dpr,0,0);
+    if (gl) gl.viewport(0,0,glC.width,glC.height);
+    fitZ = Math.min(W*0.95/CW, H*0.90/CH);
+  }
+
+  // ---------------- WebGL
+  var gl = null, inst = null, glOK = false;
+  var quadBuf = null, nodeBuf = null, haloBuf = null, leafBuf = null, coreBuf = null, pulseBuf = null;
+  var nodeProg, edgeProg, pulseProg;
+  var nodeAt = {}, edgeAt = {}, pulseAt = {};
+  var nodeData = new Float32Array(N*7);
+  var haloData = new Float32Array(0);
+  var leafData = new Float32Array(leafEdges.length*4);
+  var coreData = new Float32Array(coreEdges.length*4);
+  var pulseData = new Float32Array(70*4);
+  var nodeCount = 0, haloCount = 0, leafCount = 0, coreCount = 0, pulseCount = 0;
+  var visIdx = [], visLeaf = [], visCore = [];
+  var haloIdx = [];
+
+  var VS_COMMON = [
+    'attribute vec2 a_quad;',
+    'uniform vec2 u_res;',
+    'uniform vec2 u_pan;',
+    'uniform float u_zoom;',
+    'varying vec2 v_l;',
+    'vec2 toClip(vec2 screen){',
+    '  return vec2(screen.x/u_res.x*2.0-1.0, 1.0-screen.y/u_res.y*2.0);',
+    '}'
+  ].join('\n');
+
+  var NODE_VS = VS_COMMON + '\n' + [
+    'attribute vec2 a_pos;',
+    'attribute float a_r;',
+    'attribute vec3 a_col;',
+    'attribute float a_alpha;',
+    'uniform float u_powz;',
+    'varying vec4 v_col;',
+    'void main(){',
+    '  float sz = a_r * u_powz;',
+    '  vec2 c = vec2(u_res.x*0.5 + u_pan.x, u_res.y*0.5 + u_pan.y);',
+    '  vec2 screen = c + a_pos*u_zoom + a_quad*sz;',
+    '  gl_Position = vec4(toClip(screen), 0.0, 1.0);',
+    '  v_col = vec4(a_col, a_alpha);',
+    '  v_l = a_quad;',
+    '}'
+  ].join('\n');
+
+  var NODE_FS = [
+    'precision mediump float;',
+    'varying vec4 v_col;',
+    'varying vec2 v_l;',
+    'void main(){',
+    '  float d = length(v_l);',
+    '  float a = smoothstep(1.0, 0.58, d);',
+    '  if (a <= 0.004) discard;',
+    '  gl_FragColor = vec4(v_col.rgb, v_col.a * a);',
+    '}'
+  ].join('\n');
+
+  var EDGE_VS = [
+    'attribute vec2 a_pos;',
+    'uniform vec2 u_res;',
+    'uniform vec2 u_pan;',
+    'uniform float u_zoom;',
+    'vec2 toClip(vec2 screen){',
+    '  return vec2(screen.x/u_res.x*2.0-1.0, 1.0-screen.y/u_res.y*2.0);',
+    '}',
+    'void main(){',
+    '  vec2 c = vec2(u_res.x*0.5 + u_pan.x, u_res.y*0.5 + u_pan.y);',
+    '  vec2 screen = c + a_pos*u_zoom;',
+    '  gl_Position = vec4(toClip(screen), 0.0, 1.0);',
+    '}'
+  ].join('\n');
+
+  var EDGE_FS = [
+    'precision mediump float;',
+    'uniform vec4 u_color;',
+    'void main(){ gl_FragColor = u_color; }'
+  ].join('\n');
+
+  var PULSE_VS = VS_COMMON + '\n' + [
+    'attribute vec2 a_pos;',
+    'attribute float a_size;',
+    'attribute float a_alpha;',
+    'varying float v_a;',
+    'void main(){',
+    '  vec2 c = vec2(u_res.x*0.5 + u_pan.x, u_res.y*0.5 + u_pan.y);',
+    '  vec2 screen = c + a_pos*u_zoom + a_quad*a_size;',
+    '  gl_Position = vec4(toClip(screen), 0.0, 1.0);',
+    '  v_a = a_alpha;',
+    '  v_l = a_quad;',
+    '}'
+  ].join('\n');
+
+  var PULSE_FS = [
+    'precision mediump float;',
+    'varying float v_a;',
+    'varying vec2 v_l;',
+    'void main(){',
+    '  float d = length(v_l);',
+    '  float a = exp(-d*d*3.2) * v_a;',
+    '  if (a <= 0.004) discard;',
+    '  gl_FragColor = vec4(0.66, 0.86, 1.0, a);',
+    '}'
+  ].join('\n');
+
+  function shader(type, src){
+    var s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      throw new Error('shader: ' + gl.getShaderInfoLog(s));
+    }
+    return s;
+  }
+  function program(vs, fs){
+    var p = gl.createProgram();
+    gl.attachShader(p, shader(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      throw new Error('link: ' + gl.getProgramInfoLog(p));
+    }
+    return p;
+  }
+
+  function initGL(){
+    try {
+      gl = glC.getContext('webgl', {alpha:true, antialias:true, premultipliedAlpha:false, powerPreference:'high-performance'})
+        || glC.getContext('experimental-webgl');
+      if (!gl) return false;
+      inst = gl.getExtension('ANGLE_instanced_arrays');
+      if (!inst) return false;
+      gl.disable(gl.DEPTH_TEST);
+      gl.enable(gl.BLEND);
+      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+      nodeProg = program(NODE_VS, NODE_FS);
+      edgeProg = program(EDGE_VS, EDGE_FS);
+      pulseProg = program(PULSE_VS, PULSE_FS);
+
+      function at(p, names){
+        var m = {};
+        names.forEach(function(n){ m[n] = gl.getAttribLocation(p, n); });
+        m.u_res = gl.getUniformLocation(p, 'u_res');
+        m.u_pan = gl.getUniformLocation(p, 'u_pan');
+        m.u_zoom = gl.getUniformLocation(p, 'u_zoom');
+        return m;
+      }
+      nodeAt = at(nodeProg, ['a_quad','a_pos','a_r','a_col','a_alpha']);
+      nodeAt.u_powz = gl.getUniformLocation(nodeProg, 'u_powz');
+      edgeAt = at(edgeProg, ['a_quad','a_pos']);
+      edgeAt.u_color = gl.getUniformLocation(edgeProg, 'u_color');
+      pulseAt = at(pulseProg, ['a_quad','a_pos','a_size','a_alpha']);
+
+      quadBuf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1,-1,  1,-1,  -1,1,
+        -1,1,   1,-1,   1,1
+      ]), gl.STATIC_DRAW);
+
+      nodeBuf = gl.createBuffer();
+      haloBuf = gl.createBuffer();
+      leafBuf = gl.createBuffer();
+      coreBuf = gl.createBuffer();
+      pulseBuf = gl.createBuffer();
+      return true;
+    } catch (e) {
+      console.warn('[brain] WebGL 不可用，退回 2D 批量绘制：' + e.message);
+      return false;
+    }
+  }
+
+  // ---------------- 几何构建
+  function rebuildIndex(){
+    visIdx = []; haloIdx = []; visLeaf = []; visCore = [];
+    for (var i=0;i<N;i++){
+      if (visible[NODES[i].k]) {
+        visIdx.push(i);
+        if (!isLeafKind(NODES[i].k) && NODES[i].deg > 20) haloIdx.push(i);
+      }
+    }
+    for (var a=0;a<leafEdges.length;a++){
+      var e = leafEdges[a];
+      if (visible[NODES[e[0]].k] && visible[NODES[e[1]].k]) visLeaf.push(e);
+    }
+    for (var b=0;b<coreEdges.length;b++){
+      var f = coreEdges[b];
+      if (visible[NODES[f[0]].k] && visible[NODES[f[1]].k]) visCore.push(f);
+    }
+    if (leafData.length < visLeaf.length*4) leafData = new Float32Array(visLeaf.length*4);
+    if (coreData.length < visCore.length*4) coreData = new Float32Array(visCore.length*4);
+    if (haloData.length < haloIdx.length*7) haloData = new Float32Array(haloIdx.length*7);
+  }
+
+  function buildNodes(){
+    if (!glOK) return;
+    var focus = selected >= 0 ? selected : hover;
+    var fset = null;
+    if (focus >= 0) {
+      fset = {};
+      fset[focus] = 1;
+      var an = adj[focus];
+      for (var q=0;q<an.length;q++) fset[an[q]] = 1;
+    }
+    var m = 0;
+    for (var k=0;k<visIdx.length;k++){
+      var i = visIdx[k], n = NODES[i];
+      var leaf = isLeafKind(n.k);
+      var sc = 1;
+      if (focus >= 0) { if (i === focus) sc = 1.8; else if (fset[i]) sc = 1.18; }
+      var r = Math.max(1, radius(n) * sc);
+      var dimmed = fset && !fset[i];
+      var al = dimmed ? (leaf ? 0.10 : 0.26) : (leaf ? (dark ? 0.82 : 0.78) : 1);
+      var c = dark ? COL[n.k].dark : COL[n.k].light;
+      var o = m*7;
+      nodeData[o] = animX[i]; nodeData[o+1] = animY[i]; nodeData[o+2] = r;
+      nodeData[o+3] = c[0]; nodeData[o+4] = c[1]; nodeData[o+5] = c[2]; nodeData[o+6] = al;
+      m++;
+    }
+    nodeCount = m;
+    gl.bindBuffer(gl.ARRAY_BUFFER, nodeBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, nodeData.subarray(0, m*7), gl.DYNAMIC_DRAW);
+
+    var h = 0;
+    for (var j=0;j<haloIdx.length;j++){
+      var hi = haloIdx[j], hn = NODES[hi];
+      if (!fset || fset[hi]) {
+        var hc = dark ? COL[hn.k].dark : COL[hn.k].light;
+        var oo = h*7;
+        haloData[oo] = animX[hi]; haloData[oo+1] = animY[hi]; haloData[oo+2] = radius(hn)*2.6;
+        haloData[oo+3] = hc[0]; haloData[oo+4] = hc[1]; haloData[oo+5] = hc[2];
+        haloData[oo+6] = fset ? 0.05 : 0.14;
+        h++;
+      }
+    }
+    haloCount = h;
+    gl.bindBuffer(gl.ARRAY_BUFFER, haloBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, haloData.subarray(0, h*7), gl.DYNAMIC_DRAW);
+  }
+
+  function buildEdges(){
+    if (!glOK) return;
+    var m = 0;
+    for (var a=0;a<visLeaf.length;a++){
+      var e = visLeaf[a], o = m*4;
+      leafData[o] = animX[e[0]]; leafData[o+1] = animY[e[0]];
+      leafData[o+2] = animX[e[1]]; leafData[o+3] = animY[e[1]];
+      m++;
+    }
+    leafCount = m;
+    gl.bindBuffer(gl.ARRAY_BUFFER, leafBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, leafData.subarray(0, m*4), gl.DYNAMIC_DRAW);
+
+    m = 0;
+    for (var b=0;b<visCore.length;b++){
+      var f = visCore[b], o2 = m*4;
+      coreData[o2] = animX[f[0]]; coreData[o2+1] = animY[f[0]];
+      coreData[o2+2] = animX[f[1]]; coreData[o2+3] = animY[f[1]];
+      m++;
+    }
+    coreCount = m;
+    gl.bindBuffer(gl.ARRAY_BUFFER, coreBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, coreData.subarray(0, m*4), gl.DYNAMIC_DRAW);
+  }
+
+  // ---------------- 位置更新
+  function updatePositions(now){
+    var t = now / 1000;
+    for (var i=0;i<N;i++){
+      var n = NODES[i];
+      var dx = dispX[i], dy = dispY[i];
+      if (!motionOn && dx === 0 && dy === 0) {
+        if (animX[i] !== n.x || animY[i] !== n.y) { animX[i] = n.x; animY[i] = n.y; }
+        continue;
+      }
+      var leaf = isLeafKind(n.k);
+      var amp = (leaf ? 1.8 : 1.0) * (0.75 + 0.35 * Math.sin(t*0.21 + phase[i]));
+      var wob = motionOn ? 1 : 0;
+      animX[i] = n.x + wob*Math.sin(t*0.55 + phase[i])*amp/cam.z + dx;
+      animY[i] = n.y + wob*Math.cos(t*0.43 + phase[i]*1.7)*amp/cam.z + dy;
+    }
+  }
+  function decayDisp(){
+    var any = false;
+    for (var i=0;i<N;i++){
+      if (dispX[i] !== 0) { dispX[i] *= 0.86; if (Math.abs(dispX[i]) < 0.02) dispX[i] = 0; else any = true; }
+      if (dispY[i] !== 0) { dispY[i] *= 0.86; if (Math.abs(dispY[i]) < 0.02) dispY[i] = 0; else any = true; }
+    }
+    dispDirty = any;
+    return any;
+  }
+  function displaced(){ return dispDirty; }
+
+  // ---------------- 动画
+  function fit(animate){
+    var targetZ = fitZ;
+    if (!animate){
+      cam.z = targetZ;
+      cam.x = -CCX*targetZ;
+      cam.y = -CCY*targetZ + 6;
+      return;
+    }
+    camAnim = { t0: performance.now(), dur: 900,
+      from: {x:cam.x, y:cam.y, z:cam.z},
+      to:   {x:-CCX*targetZ, y:-CCY*targetZ+6, z:targetZ} };
+  }
+  function flyTo(n){
+    var z = Math.max(fitZ*2.4, 1.6);
+    camAnim = { t0: performance.now(), dur: 620,
+      from: {x:cam.x, y:cam.y, z:cam.z},
+      to: {x:-n.x*z, y:-n.y*z+6, z:z} };
+  }
+  function ease(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+  function stepAnim(now){
+    if (!camAnim) return;
+    var t = Math.min(1, (now-camAnim.t0)/camAnim.dur);
+    var e = ease(t);
+    cam.x = camAnim.from.x + (camAnim.to.x-camAnim.from.x)*e;
+    cam.y = camAnim.from.y + (camAnim.to.y-camAnim.from.y)*e;
+    cam.z = camAnim.from.z + (camAnim.to.z-camAnim.from.z)*e;
+    if (t>=1) camAnim = null;
+  }
+
+  // ---------------- 脉冲
+  var pulses = [];
+  var lastSpawn = 0, lastBurst = 0;
+  function addPulse(a, b, sp){
+    if (pulses.length > 70) return;
+    pulses.push({a:a, b:b, t:-Math.random()*0.12, sp: sp || (1.15 + Math.random()*0.9)});
+  }
+  function spawnPulse(now){
+    if (!pulsesOn || pulses.length > (BIG_GRAPH ? 12 : 20)) return;
+    if (now - lastSpawn < (BIG_GRAPH ? 220 : 120)) return;
+    lastSpawn = now;
+    for (var tries=0; tries<10; tries++){
+      var e = EDGES[(Math.random()*EDGES.length)|0];
+      if (!visible[NODES[e[0]].k] || !visible[NODES[e[1]].k]) continue;
+      addPulse(e[0], e[1]);
+      return;
+    }
+  }
+  function spawnBurst(now){
+    if (!pulsesOn) return;
+    if (now - lastBurst < (BIG_GRAPH ? 2400 : 1400)) return;
+    lastBurst = now;
+    var cand = [];
+    for (var t2=0;t2<40;t2++){
+      var i = (Math.random()*N)|0;
+      var n = NODES[i];
+      if (visible[n.k] && !isLeafKind(n.k) && n.deg > 12) cand.push(i);
+    }
+    if (!cand.length) return;
+    var hub = cand[(Math.random()*cand.length)|0];
+    var nb = adj[hub].slice(0, BIG_GRAPH ? 5 : 8);
+    for (var k=0;k<nb.length;k++) if (visible[NODES[nb[k]].k]) addPulse(hub, nb[k], 0.9 + Math.random()*0.5);
+  }
+  function stepPulses(dt){
+    for (var i=pulses.length-1;i>=0;i--){
+      var p = pulses[i];
+      if (p.t < 0) { p.t += dt * 0.0006; continue; }
+      p.t += dt * p.sp * 0.001;
+      if (p.t >= 1) pulses.splice(i,1);
+    }
+  }
+
+  // ---------------- 渲染
+  var zoomPow = 1;
+  function drawGL(now){
+    gl.viewport(0,0,glC.width,glC.height);
+    gl.clearColor(0,0,0,0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    // 边
+    gl.useProgram(edgeProg);
+    gl.uniform2f(edgeAt.u_res, W, H);
+    gl.uniform2f(edgeAt.u_pan, cam.x, cam.y);
+    gl.uniform1f(edgeAt.u_zoom, cam.z);
+    var focus = selected >= 0 ? selected : hover;
+    var dim = focus >= 0 ? 0.42 : 1;
+    drawEdgeBatch(leafBuf, leafCount, dark
+      ? [148/255,163/255,184/255, 0.16*dim]
+      : [51/255,65/255,85/255, 0.105*dim]);
+    drawEdgeBatch(coreBuf, coreCount, dark
+      ? [96/255,165/255,250/255, 0.5*dim]
+      : [30/255,64/255,175/255, 0.34*dim]);
+
+    // 节点
+    zoomPow = Math.pow(cam.z, 0.34);
+    gl.useProgram(nodeProg);
+    gl.uniform2f(nodeAt.u_res, W, H);
+    gl.uniform2f(nodeAt.u_pan, cam.x, cam.y);
+    gl.uniform1f(nodeAt.u_zoom, cam.z);
+    gl.uniform1f(nodeAt.u_powz, zoomPow);
+    drawNodeBatch(haloBuf, haloCount);
+    drawNodeBatch(nodeBuf, nodeCount);
+
+    // 脉冲（叠加发光）
+    if (pulseCount > 0) {
+      gl.useProgram(pulseProg);
+      gl.uniform2f(pulseAt.u_res, W, H);
+      gl.uniform2f(pulseAt.u_pan, cam.x, cam.y);
+      gl.uniform1f(pulseAt.u_zoom, cam.z);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+      gl.enableVertexAttribArray(pulseAt.a_quad);
+      gl.vertexAttribPointer(pulseAt.a_quad, 2, gl.FLOAT, false, 0, 0);
+      inst.vertexAttribDivisorANGLE(pulseAt.a_quad, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, pulseBuf);
+      bindInst(pulseAt.a_pos, 2, 16, 0);
+      bindInst(pulseAt.a_size, 1, 16, 8);
+      bindInst(pulseAt.a_alpha, 1, 16, 12);
+      inst.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, pulseCount);
+      gl.disableVertexAttribArray(pulseAt.a_quad);
+      gl.disableVertexAttribArray(pulseAt.a_pos);
+      gl.disableVertexAttribArray(pulseAt.a_size);
+      gl.disableVertexAttribArray(pulseAt.a_alpha);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    }
+  }
+  function bindInst(loc, size, stride, offset){
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride, offset);
+    inst.vertexAttribDivisorANGLE(loc, 1);
+  }
+  function drawNodeBatch(buf, count){
+    if (!count) return;
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.enableVertexAttribArray(nodeAt.a_quad);
+    gl.vertexAttribPointer(nodeAt.a_quad, 2, gl.FLOAT, false, 0, 0);
+    inst.vertexAttribDivisorANGLE(nodeAt.a_quad, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    bindInst(nodeAt.a_pos, 2, 28, 0);
+    bindInst(nodeAt.a_r, 1, 28, 8);
+    bindInst(nodeAt.a_col, 3, 28, 12);
+    bindInst(nodeAt.a_alpha, 1, 28, 24);
+    inst.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, count);
+    [nodeAt.a_quad, nodeAt.a_pos, nodeAt.a_r, nodeAt.a_col, nodeAt.a_alpha].forEach(function(l){
+      gl.disableVertexAttribArray(l);
+    });
+  }
+  function drawEdgeBatch(buf, count, col){
+    if (!count) return;
+    gl.uniform4f(edgeAt.u_color, col[0], col[1], col[2], col[3]);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.enableVertexAttribArray(edgeAt.a_pos);
+    gl.vertexAttribPointer(edgeAt.a_pos, 2, gl.FLOAT, false, 0, 0);
+    inst.vertexAttribDivisorANGLE(edgeAt.a_pos, 0);
+    gl.drawArrays(gl.LINES, 0, count*2);
+    gl.disableVertexAttribArray(edgeAt.a_pos);
+  }
+
+  function drawBg(){
+    bgx.clearRect(0,0,W,H);
+    if (!showShape || !SHAPE) return;
+    var img = dark ? shapeDark : shapeLight;
+    if (!img || !img.complete || !img.naturalWidth) return;
+    var r = SHAPE.rect;
+    bgx.drawImage(img, sx(r[0]), sy(r[1]), r[2]*cam.z, r[3]*cam.z);
+  }
+
+  function drawOverlay(now, clear){
+    if (clear !== false) ovx.clearRect(0,0,W,H);
+    var focus = selected >= 0 ? selected : hover;
+    // 选中/悬停：高亮它自己的突触 + 邻居环
+    if (focus >= 0){
+      var n = NODES[focus];
+      if (visible[n.k]) {
+        var X = sx(animX[focus]), Y = sy(animY[focus]);
+        var r = Math.max(2, radius(n) * Math.pow(cam.z, 0.34) * (focus === selected ? 1.8 : 1.35));
+        var nb = adj[focus];
+        ovx.beginPath();
+        for (var q=0;q<nb.length;q++){
+          var m = NODES[nb[q]];
+          if (!visible[m.k]) continue;
+          ovx.moveTo(X, Y);
+          ovx.lineTo(sx(animX[nb[q]]), sy(animY[nb[q]]));
+        }
+        ovx.strokeStyle = 'rgba(245,158,11,.85)';
+        ovx.lineWidth = 1.35;
+        ovx.setLineDash([5,4]);
+        ovx.stroke();
+        ovx.setLineDash([]);
+        ovx.strokeStyle = dark ? '#fcd34d' : '#d97706';
+        ovx.lineWidth = 1.1;
+        for (var w=0;w<nb.length;w++){
+          if (!visible[NODES[nb[w]].k]) continue;
+          var mx = sx(animX[nb[w]]), my = sy(animY[nb[w]]);
+          var mr = Math.max(1.5, radius(NODES[nb[w]]) * Math.pow(cam.z, 0.34));
+          ovx.beginPath(); ovx.arc(mx, my, mr+1.8, 0, 6.2832); ovx.stroke();
+        }
+        var g = ovx.createRadialGradient(X, Y, 0, X, Y, r*7);
+        g.addColorStop(0, 'rgba(245,158,11,.34)');
+        g.addColorStop(0.5, 'rgba(245,158,11,.12)');
+        g.addColorStop(1, 'rgba(245,158,11,0)');
+        ovx.fillStyle = g;
+        ovx.beginPath(); ovx.arc(X, Y, r*7, 0, 6.2832); ovx.fill();
+        ovx.strokeStyle = '#f59e0b'; ovx.lineWidth = 1.8;
+        ovx.beginPath(); ovx.arc(X, Y, r+3.5, 0, 6.2832); ovx.stroke();
+      }
+    }
+    if (showLabels) drawLabels();
+  }
+
+  function drawLabels(){
+    var z = cam.z;
+    var focus = selected >= 0 ? selected : hover;
+    var cand = [];
+    for (var i=0;i<N;i++){
+      var n = NODES[i];
+      if (!visible[n.k]) continue;
+      var show;
+      if (isLeafKind(n.k)) show = (z > 2.1 && n.deg > 2);
+      else show = (n.deg >= 8) || (z > 1.15);
+      if (i === selected || i === hover) show = true;
+      if (!show) continue;
+      var X = sx(animX[i]), Y = sy(animY[i]);
+      if (X < -80 || X > W+80 || Y < -30 || Y > H+30) continue;
+      cand.push([i, n, X, Y]);
+      if (cand.length > 120) break;
+    }
+    cand.sort(function(a,b){
+      if (a[0] === selected) return -1;
+      if (b[0] === selected) return 1;
+      return b[1].deg - a[1].deg;
+    });
+    var boxes = [];
+    var drawn = 0;
+    for (var k=0;k<cand.length && drawn < 64;k++){
+      var i2 = cand[k][0], n2 = cand[k][1], X2 = cand[k][2], Y2 = cand[k][3];
+      var isFocus = (i2 === selected || i2 === hover);
+      var fs = isLeafKind(n2.k) ? 10.5 : 12;
+      ovx.font = (i2 === selected ? 600 : 500) + ' ' + fs + 'px -apple-system,"Segoe UI","Microsoft YaHei",sans-serif';
+      var label = n2.t.length > 22 ? n2.t.slice(0,22)+'…' : n2.t;
+      var w = ovx.measureText(label).width;
+      var top = Y2 + radius(n2)*Math.pow(z,0.34) + 3.5;
+      var box = [X2 - w/2 - 2, top - 1, X2 + w/2 + 2, top + fs + 2];
+      var hitBox = false;
+      if (!isFocus){
+        for (var b=0;b<boxes.length;b++){
+          var o = boxes[b];
+          if (box[0] < o[2] && box[2] > o[0] && box[1] < o[3] && box[3] > o[1]){ hitBox = true; break; }
+        }
+      }
+      if (hitBox) continue;
+      boxes.push(box);
+      drawn++;
+      ovx.textAlign = 'center';
+      ovx.textBaseline = 'top';
+      ovx.lineWidth = 3.4;
+      ovx.strokeStyle = dark ? 'rgba(10,16,29,.92)' : 'rgba(238,241,246,.94)';
+      ovx.strokeText(label, X2, top);
+      ovx.fillStyle = isLeafKind(n2.k) ? (dark ? '#cbd5e1' : '#475569') : color(n2.k);
+      ovx.fillText(label, X2, top);
+    }
+    ovx.textAlign = 'start'; ovx.textBaseline = 'alphabetic';
+  }
+
+  // 无 WebGL 时的 2D 批量兜底（按类型合并 path，远快于逐点绘制）
+  function drawFallback(){
+    bgx.clearRect(0,0,W,H);
+    if (showShape && SHAPE) {
+      var img = dark ? shapeDark : shapeLight;
+      if (img && img.complete && img.naturalWidth) {
+        var r = SHAPE.rect;
+        bgx.drawImage(img, sx(r[0]), sy(r[1]), r[2]*cam.z, r[3]*cam.z);
+      }
+    }
+    ovx.clearRect(0,0,W,H);
+    ovx.lineWidth = 0.7;
+    ovx.strokeStyle = dark ? 'rgba(148,163,184,.10)' : 'rgba(51,65,85,.07)';
+    ovx.beginPath();
+    for (var a=0;a<visLeaf.length;a++){
+      var e = visLeaf[a];
+      ovx.moveTo(sx(animX[e[0]]), sy(animY[e[0]]));
+      ovx.lineTo(sx(animX[e[1]]), sy(animY[e[1]]));
+    }
+    ovx.stroke();
+    ovx.strokeStyle = dark ? 'rgba(96,165,250,.22)' : 'rgba(30,64,175,.16)';
+    ovx.beginPath();
+    for (var b=0;b<visCore.length;b++){
+      var f = visCore[b];
+      ovx.moveTo(sx(animX[f[0]]), sy(animY[f[0]]));
+      ovx.lineTo(sx(animX[f[1]]), sy(animY[f[1]]));
+    }
+    ovx.stroke();
+    var groups = {};
+    for (var k=0;k<visIdx.length;k++){
+      var i = visIdx[k], n = NODES[i];
+      (groups[n.k] || (groups[n.k] = [])).push(i);
+    }
+    for (var g in groups){
+      if (!groups.hasOwnProperty(g)) continue;
+      var arr = groups[g];
+      ovx.fillStyle = color(g);
+      ovx.globalAlpha = isLeafKind(g) ? (dark ? 0.82 : 0.78) : 1;
+      ovx.beginPath();
+      for (var q=0;q<arr.length;q++){
+        var ii = arr[q];
+        var rr = Math.max(1, radius(NODES[ii]) * Math.pow(cam.z, 0.34));
+        ovx.moveTo(sx(animX[ii])+rr, sy(animY[ii]));
+        ovx.arc(sx(animX[ii]), sy(animY[ii]), rr, 0, 6.2832);
+      }
+      ovx.fill();
+      ovx.globalAlpha = 1;
+    }
+    drawOverlay(performance.now(), false);
+  }
+
+  // ---------------- 按需渲染主循环
+  var rafId = null, needsRender = true, lastTs = 0;
+  window.__brainPerf = { frames: 0, lastMs: 0, mode: '' };
+
+  function invalidate(){
+    needsRender = true;
+    if (rafId === null) rafId = requestAnimationFrame(frame);
+  }
+
+  function frame(now){
+    rafId = null;
+    var t0 = performance.now();
+    if (!lastTs) lastTs = now;
+    var dt = Math.min(64, now - lastTs) || 16;
+    lastTs = now;
+
+    stepAnim(now);
+    var anyDisp = decayDisp();
+    updatePositions(now);
+
+    var moving = motionOn || anyDisp;
+    if (moving) { buildNodes(); buildEdges(); }
+    else if (posDirty) { buildNodes(); buildEdges(); posDirty = false; }
+
+    // 脉冲
+    stepPulses(dt);
+    spawnPulse(now);
+    spawnBurst(now);
+    buildPulses();
+
+    if (glOK) { drawGL(now); drawBg(); drawOverlay(now); }
+    else { drawFallback(); }
+
+    window.__brainPerf.frames++;
+    window.__brainPerf.lastMs = performance.now() - t0;
+    window.__brainPerf.mode = glOK ? 'webgl' : 'canvas2d';
+
+    var animating = motionOn || pulses.length > 0 || camAnim || anyDisp;
+    if (animating || needsRender) {
+      needsRender = false;
+      rafId = requestAnimationFrame(frame);
+    }
+  }
+
+  function buildPulses(){
+    if (!glOK) return;
+    pulseCount = 0;
+    if (!pulses.length) return;
+    var scale = Math.max(0.9, Math.min(1.8, cam.z*0.7));
+    for (var i=0;i<pulses.length;i++){
+      var p = pulses[i];
+      if (p.t < 0) continue;
+      var ax = animX[p.a], ay = animY[p.a], bx = animX[p.b], by = animY[p.b];
+      var x = ax + (bx-ax)*p.t, y = ay + (by-ay)*p.t;
+      var size = 2.4 * scale * 6.5;
+      var alpha = Math.min(1, (1 - Math.abs(p.t-0.5)*1.4)) * 0.9;
+      if (alpha <= 0.02) continue;
+      var o = pulseCount*4;
+      pulseData[o] = x; pulseData[o+1] = y; pulseData[o+2] = size; pulseData[o+3] = alpha;
+      pulseCount++;
+    }
+    if (pulseCount) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, pulseBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, pulseData.subarray(0, pulseCount*4), gl.DYNAMIC_DRAW);
+    }
+  }
+
+  // ---------------- 交互
+  var drag = null, downPt = null, moved = false, lastMouse = null;
+
+  ovC.addEventListener('pointerdown', function(ev){
+    ovC.setPointerCapture(ev.pointerId);
+    var hit0 = pick(ev.clientX, ev.clientY);
+    if (hit0 >= 0){
+      dragNode = hit0;
+      drag = null;
+    } else {
+      dragNode = -1;
+      drag = {x:ev.clientX, y:ev.clientY, cx:cam.x, cy:cam.y};
+      ovC.classList.add('dragging');
+    }
+    downPt = {x:ev.clientX, y:ev.clientY};
+    lastMouse = {x:ev.clientX, y:ev.clientY};
+    moved = false;
+    camAnim = null;
+  });
+
+  ovC.addEventListener('pointermove', function(ev){
+    if (dragNode >= 0){
+      var mdx = ev.clientX - downPt.x, mdy = ev.clientY - downPt.y;
+      if (Math.abs(mdx)+Math.abs(mdy) > 3) moved = true;
+      dispX[dragNode] += (ev.clientX - lastMouse.x) / cam.z;
+      dispY[dragNode] += (ev.clientY - lastMouse.y) / cam.z;
+      lastMouse = {x:ev.clientX, y:ev.clientY};
+      dispDirty = true;
+      invalidate();
+      return;
+    }
+    if (drag){
+      var dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+      if (Math.abs(dx)+Math.abs(dy) > 4) moved = true;
+      cam.x = drag.cx + dx; cam.y = drag.cy + dy;
+      invalidate();
+      return;
+    }
+    var hit = pick(ev.clientX, ev.clientY);
+    if (hit !== hover){
+      hover = hit;
+      posDirty = true;
+      if (hit >= 0){
+        var n = NODES[hit];
+        tip.innerHTML = escapeHtml(n.t) + '<small>' + (TYPES[n.k]||TYPES.episode).label + ' · ' + n.deg + ' 条关联</small>';
+        tip.style.left = ev.clientX + 'px';
+        tip.style.top = ev.clientY + 'px';
+        tip.classList.add('show');
+        ovC.style.cursor = 'pointer';
+      } else {
+        tip.classList.remove('show');
+        ovC.style.cursor = 'grab';
+      }
+      invalidate();
+    } else if (hit >= 0){
+      tip.style.left = ev.clientX + 'px';
+      tip.style.top = ev.clientY + 'px';
+    }
+  });
+
+  ovC.addEventListener('pointerup', function(ev){
+    ovC.classList.remove('dragging');
+    if (dragNode >= 0){
+      if (!moved) select(dragNode, false);
+      dragNode = -1;
+    } else if (drag && !moved){
+      select(pick(ev.clientX, ev.clientY), false);
+    }
+    drag = null;
+    lastMouse = null;
+    invalidate();
+  });
+
+  ovC.addEventListener('pointerleave', function(){
+    hover = -1; posDirty = true; tip.classList.remove('show');
+    drag = null; dragNode = -1; lastMouse = null;
+    invalidate();
+  });
+
+  ovC.addEventListener('dblclick', function(ev){
+    var hit = pick(ev.clientX, ev.clientY);
+    if (hit >= 0){ select(hit, true); flyTo(NODES[hit]); invalidate(); }
+  });
+
+  ovC.addEventListener('wheel', function(ev){
+    ev.preventDefault();
+    var factor = Math.exp(-ev.deltaY * 0.0016);
+    zoomAt(ev.clientX, ev.clientY, factor);
+  }, {passive:false});
+
+  var posDirty = false;
+
+  function zoomAt(mx, my, factor){
+    var z2 = Math.max(0.1, Math.min(9, cam.z*factor));
+    var wx = (mx - W/2 - cam.x)/cam.z;
+    var wy = (my - H/2 - cam.y)/cam.z;
+    cam.z = z2;
+    cam.x = mx - W/2 - wx*z2;
+    cam.y = my - H/2 - wy*z2;
+    invalidate();
+  }
+
+  function pick(mx, my){
+    var best = -1, bestD = 13*13;
+    for (var i=0;i<N;i++){
+      var n = NODES[i];
+      if (!visible[n.k]) continue;
+      var dx = sx(animX[i])-mx, dy = sy(animY[i])-my;
+      var d = dx*dx+dy*dy;
+      if (d < bestD){ bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  // ---------------- 面板
+  var panel = document.getElementById('panel');
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function select(i, fly){
+    selected = i;
+    posDirty = true;
+    if (i < 0){ panel.classList.remove('show'); invalidate(); return; }
+    var n = NODES[i];
+    document.getElementById('panelKind').textContent = (TYPES[n.k]||TYPES.episode).label + ' · MEMORY';
+    document.getElementById('panelTitle').textContent = n.t;
+    document.getElementById('panelTags').innerHTML =
+      (n.g||[]).map(function(t){ return '<span>#'+escapeHtml(t)+'</span>'; }).join('');
+    document.getElementById('panelEx').textContent = n.e || '（这条记忆还没有摘要）';
+    document.getElementById('panelDeg').textContent = n.deg + ' 条';
+    document.getElementById('panelPath').textContent = n.p;
+    var origEl = document.getElementById('panelOrig');
+    if (n.o){ origEl.textContent = '原文件：' + n.o; origEl.style.display = 'block'; }
+    else { origEl.textContent = ''; origEl.style.display = 'none'; }
+    var nb = adj[i].slice().sort(function(a,b){ return NODES[b].deg-NODES[a].deg; });
+    document.getElementById('panelDate').textContent = dateOf(n) || '—';
+    document.getElementById('panelNbr').innerHTML = nb.slice(0,14).map(function(j){
+      var m = NODES[j];
+      var col = color(m.k);
+      return '<button data-i="'+j+'"><span class="dot" style="background:'+col+'"></span>'+
+        escapeHtml(m.t)+'<span class="d">'+m.deg+'</span></button>';
+    }).join('') || '<span style="font-size:12px;color:var(--faint)">暂无关联</span>';
+    panel.classList.add('show');
+    document.getElementById('panelNbr').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        var j = +b.dataset.i;
+        select(j, false);
+        flyTo(NODES[j]);
+        invalidate();
+      });
+    });
+    if (fly) flyTo(n);
+    invalidate();
+  }
+  function dateOf(n){
+    var m = (n.p||'').match(/(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : '';
+  }
+  document.getElementById('closePanel').addEventListener('click', function(){ select(-1); });
+
+  // ---------------- 图例
+  function buildLegend(){
+    var counts = {};
+    NODES.forEach(function(n){ counts[n.k] = (counts[n.k]||0)+1; });
+    var el = document.getElementById('legend');
+    el.innerHTML = ORDER.filter(function(k){ return counts[k]; }).map(function(k){
+      var c = TYPES[k];
+      return '<div class="chip" data-k="'+k+'"><span class="dot" style="background:'+
+        (dark?c.dark:c.light)+'"></span>'+c.label+'<span class="n">'+counts[k]+'</span></div>';
+    }).join('');
+    el.querySelectorAll('.chip').forEach(function(chip){
+      chip.addEventListener('click', function(){
+        var k = chip.dataset.k;
+        visible[k] = !visible[k];
+        chip.classList.toggle('off', !visible[k]);
+        if (selected >= 0 && !visible[NODES[selected].k]) select(-1);
+        rebuildIndex();
+        posDirty = true;
+        invalidate();
+      });
+    });
+  }
+  function repaintLegend(){
+    document.querySelectorAll('#legend .chip').forEach(function(chip){
+      var k = chip.dataset.k, c = TYPES[k];
+      chip.querySelector('.dot').style.background = dark ? c.dark : c.light;
+    });
+  }
+
+  // ---------------- 搜索
+  function search(q){
+    q = q.trim().toLowerCase();
+    if (!q){ resultsEl.classList.remove('show'); resultsEl.innerHTML=''; return; }
+    var hits = [];
+    for (var i=0;i<N;i++){
+      if (NODES[i].t.toLowerCase().indexOf(q) >= 0){
+        hits.push(NODES[i]);
+        if (hits.length >= 40) break;
+      }
+    }
+    hits.sort(function(a,b){ return b.deg - a.deg; });
+    hits = hits.slice(0,8);
+    resultsEl.innerHTML = hits.map(function(n){
+      var c = color(n.k);
+      return '<div data-i="'+n.i+'"><span class="dot" style="background:'+c+'"></span>'+
+        escapeHtml(n.t)+'<span class="cnt">'+n.deg+'</span></div>';
+    }).join('') || '<div style="color:var(--faint);cursor:default">没找到</div>';
+    resultsEl.classList.add('show');
+    resultsEl.querySelectorAll('div[data-i]').forEach(function(d){
+      d.addEventListener('click', function(){
+        var i = +d.dataset.i;
+        select(i, true);
+        resultsEl.classList.remove('show');
+        qEl.value = NODES[i].t;
+        invalidate();
+      });
+    });
+  }
+  qEl.addEventListener('input', function(){ search(qEl.value); });
+  qEl.addEventListener('keydown', function(ev){
+    if (ev.key === 'Enter'){
+      var first = resultsEl.querySelector('div[data-i]');
+      if (first) first.click();
+    }
+    if (ev.key === 'Escape'){ qEl.blur(); resultsEl.classList.remove('show'); }
+  });
+  document.addEventListener('click', function(ev){
+    if (!ev.target.closest('.search')) resultsEl.classList.remove('show');
+  });
+
+  // ---------------- 按钮
+  document.getElementById('btnFit').addEventListener('click', function(){ fit(true); invalidate(); });
+  document.getElementById('btnShape').addEventListener('click', function(){
+    showShape = !showShape; this.classList.toggle('on', showShape); invalidate();
+  });
+  document.getElementById('btnMotion').addEventListener('click', function(){
+    motionOn = !motionOn; this.classList.toggle('on', motionOn);
+    posDirty = true; invalidate();
+  });
+  document.getElementById('btnPulse').addEventListener('click', function(){
+    pulsesOn = !pulsesOn; this.classList.toggle('on', pulsesOn);
+    if (!pulsesOn) pulses = [];
+    invalidate();
+  });
+  document.getElementById('btnLabel').addEventListener('click', function(){
+    showLabels = !showLabels; this.classList.toggle('on', showLabels); invalidate();
+  });
+  document.getElementById('btnTheme').addEventListener('click', function(){
+    dark = !dark;
+    document.body.classList.toggle('dark', dark);
+    this.classList.toggle('on', dark);
+    repaintLegend();
+    posDirty = true;
+    invalidate();
+  });
+
+  // ---------------- 键盘
+  document.addEventListener('keydown', function(ev){
+    if (ev.key === '/' && document.activeElement !== qEl){
+      ev.preventDefault(); qEl.focus();
+    }
+    if (ev.key === 'Escape'){ select(-1); qEl.blur(); resultsEl.classList.remove('show'); }
+  });
+
+  // ---------------- 启动
+  glOK = initGL();
+  resize();
+  rebuildIndex();
+  buildLegend();
+  var counts = DATA.stats || {};
+  var total = N;
+  var coreCount = total - (counts.episode||0) - (counts.source||0);
+  document.getElementById('stat').textContent =
+    total.toLocaleString() + ' 个神经元 · ' + EDGES.length.toLocaleString() + ' 条突触 · ' +
+    coreCount + ' 条核心记忆 · ' + (counts.source||0).toLocaleString() + ' 条资料';
+  cam.z = fitZ*0.62;
+  cam.x = -CCX*cam.z; cam.y = -CCY*cam.z;
+  fit(true);
+  if (glOK) { buildNodes(); buildEdges(); }
+  window.addEventListener('resize', function(){
+    var oldFit = fitZ;
+    resize();
+    if (Math.abs(oldFit-fitZ) > 1e-6) fit(false);
+    posDirty = true;
+    invalidate();
+  });
+  // 供自动化/调试用
+  window.__brainForceRender = function(){ invalidate(); };
+  invalidate();
+}
+
+// ---------------- 启动：内嵌数据优先，否则向宿主要（DSH 面板）
+function showBootError(msg){
+  document.body.innerHTML = '<div style="padding:40px;font:15px/1.9 sans-serif;color:#334155;line-height:1.9">' +
+    '<b style="font-size:16px">图谱加载失败</b><br>' + msg + '</div>';
+}
+function embeddedData(){
+  var el = document.getElementById('brain-data');
+  if (!el) return null;
+  var t = (el.textContent || '').trim();
+  if (!t || t.charAt(0) !== '{') return null;
+  try {
+    var d = JSON.parse(t);
+    return (d && d.nodes && d.nodes.length) ? d : null;
+  } catch (e) { return null; }
+}
+(function(){
+  var emb = embeddedData();
+  if (emb) { boot(emb); return; }
+  var api = (typeof window.__BRAIN_API__ === 'string' && window.__BRAIN_API__)
+    || '/api/dsh-brain/graph';
+  fetch(api, { cache: 'no-store', credentials: 'same-origin' })
+    .then(function(r){
+      return r.json().catch(function(){ return { error: 'HTTP ' + r.status }; })
+        .then(function(j){
+          if (!r.ok) throw new Error(j && j.error ? j.error : ('HTTP ' + r.status));
+          return j;
+        });
+    })
+    .then(function(d){
+      if (!d || !d.nodes || !d.nodes.length) throw new Error((d && d.error) || '宿主返回了空数据');
+      boot(d);
+    })
+    .catch(function(e){
+      showBootError(String(e && e.message ? e.message : e) +
+        '<br><br>检查数据源：<code>~/.dsh/brain-viewer.config.json</code> 的 <code>graphPath</code>，' +
+        '或插件目录下的 <code>brain/graph.json</code>。');
+    });
+})();
+</script>
+</body>
+</html>

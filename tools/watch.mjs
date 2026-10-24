@@ -7,8 +7,8 @@
  *   node tools/watch.mjs --workspace "D:/我的资料"               # 盯原始资料目录（md/docx/xlsx）
  *   node tools/watch.mjs --demo                                # 演示模式：盯插件自带的 demo vault
  *
- * 原理：fs.watch 递归监听 → 防抖 2.5s → 跑 pipeline → 写 app/brain.html → 重新内嵌进 client.js。
- * 生效：刷新 DSH 页面即可看到新图谱（客户端模块是构建时内嵌的，所以不能完全免刷新）。
+ * 原理：fs.watch 递归监听 → 防抖 2.5s → 跑 build_graph.py → 写 brain/graph.json。
+ * 生效：面板每次打开都会 fetch /api/dsh-brain/graph，所以**重新打开面板即最新，不用刷新页面**。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -56,8 +56,7 @@ function rebuild() {
       run(python, [path.join(brainDir, "build_graph.py")], pluginRoot);
     }
     fs.copyFileSync(path.join(brainDir, "brain.html"), path.join(pluginRoot, "app", "brain.html"));
-    run(process.execPath, [path.join(pluginRoot, "build.mjs")], pluginRoot);
-    console.log(`✔ 重建完成（${((Date.now() - started) / 1000).toFixed(1)}s）。刷新 DSH 页面查看。`);
+    console.log(`✔ 重建完成（${((Date.now() - started) / 1000).toFixed(1)}s）。重新打开面板即最新（数据走宿主路由）。`);
   } catch (error) {
     console.error("✘ 重建失败：", error.message);
   } finally {

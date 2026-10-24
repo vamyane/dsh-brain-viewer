@@ -1,6 +1,6 @@
 # 发布到 DSH 插件市场
 
-发布流程（2026-10-25 更新到 0.2.3）：
+发布流程（2026-10-25 更新到 0.3.0）：
 
 1. `node tools/rebuild.mjs --demo` —— **必须**先用演示数据重建（真实 vault 绝不能进公开包）
 2. `npm test` + `npm pack --dry-run` 自检
@@ -14,7 +14,7 @@ DSH 插件市场本质是 **npm 包索引 + 精选目录**：
 2. 目录站（awesome-dsh-plugin）收录后，市场才能搜到并安装
 3. 用户用 `dsh plugin add <包名>` 或插件市场的「安装」按钮安装
 
-包名 `dsh-brain-viewer` 已占用（v0.2.2 已发布）。本机 npm 登录态是 `~/.npmrc` 里的 npmjs token，注意默认 registry 是 npmmirror，验证/发布都要带 `--registry=https://registry.npmjs.org`。
+包名 `dsh-brain-viewer` 已占用（v0.2.4 已发布）。本机 npm 登录态是 `~/.npmrc` 里的 npmjs token，注意默认 registry 是 npmmirror，验证/发布都要带 `--registry=https://registry.npmjs.org`。
 
 ## 发布命令
 
@@ -32,7 +32,7 @@ npm view dsh-brain-viewer version --registry=https://registry.npmjs.org
 ## 本地安装（不发布也能用）
 
 ```powershell
-dsh plugin --profile desktop add C:\path\to\dsh-brain-viewer-0.2.3.tgz
+dsh plugin --profile desktop add C:\path\to\dsh-brain-viewer-0.3.0.tgz
 ```
 
 或直接把 `dsh-plugin` 目录复制到 `~/.dsh/profiles/desktop/node_modules/dsh-brain-viewer`，

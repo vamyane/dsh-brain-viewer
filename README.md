@@ -35,13 +35,13 @@ no Python dependency).
 # inside the installed package, or from a local checkout
 node tools/rebuild.mjs --workspace "D:/my-notes"   # scan your own folder
 node tools/rebuild.mjs --demo                      # restore the demo brain
-# refresh the DSH page; if nothing changes, restart DSH once
+# data lands in brain/graph.json — reopen the panel, no page refresh needed
 ```
 
-The pipeline writes memory notes to `brain/vault/`, then rebuilds
-`app/brain.html` and re-embeds it into `lib/client.js`.
+The pipeline writes memory notes to `brain/vault/` and generates `brain/graph.json`,
+which the panel reads live.
 
-## Near-real-time sync
+## Live sync
 
 ```bash
 # watch a Markdown vault (e.g. the vault your DSH memory skill writes to)
@@ -51,19 +51,37 @@ node tools/watch.mjs --vault "C:/path/to/vault"
 node tools/watch.mjs --workspace "D:/my-notes"
 ```
 
-Changes are debounced (2.5s) and the graph is rebuilt in ~1-3s, then `app/brain.html`
-is updated. **Refresh the DSH page** to see new nodes.
+Changes are debounced (2.5s) and the graph is rebuilt in ~1-3s. The panel re-fetches
+`/api/dsh-brain/graph` **every time it opens**, so reopening it shows the latest graph —
+no repack, no page refresh.
 
-> This is near-real-time because the client HTML is embedded at build time. Fully live
-> updates (runtime `graph.json` + client polling) are on the roadmap.
+## Data source (v0.3.0)
 
-## Performance (v0.2.3)
+The panel no longer embeds data; it asks the host:
+
+```
+GET /api/dsh-brain/graph  →  brain/graph.json
+```
+
+- Default: the plugin's own `brain/graph.json` (demo data, or whatever `rebuild.mjs` wrote).
+- To point elsewhere (e.g. the graph produced by your vault skill):
+
+```json
+// ~/.dsh/brain-viewer.config.json
+{ "graphPath": "C:/path/to/ai-brain/graph.json" }
+```
+
+Restart DSH once so the host route is loaded; after that, data changes only need reopening
+the panel.
+
+## Performance (v0.3.0)
 
 - **WebGL batch rendering**: nodes are instanced quads and links a single `gl.LINES` batch; pan/zoom only updates a matrix instead of rebuilding geometry. A 6,398-node graph renders in **0.6–1.2 ms per frame** (the old Canvas2D path was ~90 ms/frame).
 - **Render on demand**: no `requestAnimationFrame` at all while nothing is animating or interacting (0 frames at rest) — the same strategy as Obsidian's graph view. Continuous frames only while the drift / pulse toggles are on.
 - **Label LOD**: labels appear by zoom threshold, capped at 64 with overlap culling; labels and highlights live on a separate 2D overlay that draws only the few needed.
+- **Data over a host route**: `client.js` dropped from 1 MB to **31 KB**; data never ships in the bundle and changes need no repack.
 - Without WebGL it falls back to batched 2D paths and still renders on demand.
-- `brain.html` is embedded as gzip+base64 and decompressed only when the panel opens; closing the panel unmounts the iframe.
+- Closing the panel unmounts the iframe, so it costs no CPU when idle.
 
 ## Privacy
 

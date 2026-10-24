@@ -4,6 +4,7 @@
  * 两个槽位注册成功、面板组件可渲染、宿主半边可导入。
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 import zlib from "node:zlib";
@@ -28,10 +29,14 @@ if (!match) {
   try {
     const html = zlib.gunzipSync(Buffer.from(match[1], "base64")).toString("utf8");
     if (html.includes("<!doctype html") && html.includes("关系图谱") && html.includes("</html>")) {
-      ok(`gzip 内嵌 brain.html 完整（解压后 ${(html.length / 1024 / 1024).toFixed(2)} MB）`);
+      ok(`gzip 内嵌 viewer.html 完整（解压后 ${(html.length / 1024 / 1024).toFixed(2)} MB）`);
     } else {
       fail("gzip 内嵌内容");
     }
+    if (html.includes('"nodes":[{"t"')) fail("内嵌 HTML 不带图谱数据", "数据应该走宿主路由");
+    else ok("内嵌 HTML 不含图谱数据（数据走 /api/dsh-brain/graph）");
+    if (html.includes("/*__BRAIN_API_BOOTSTRAP__*/")) ok("保留 API 地址注入点");
+    else fail("API 地址注入点");
   } catch (error) {
     fail("gzip 解压", error.message);
   }
@@ -89,12 +94,38 @@ try {
   fail("apply 执行", error.message);
 }
 
+let host = null;
 try {
-  const host = await import(url.pathToFileURL(path.join(here, "..", "lib", "index.js")));
+  host = await import(url.pathToFileURL(path.join(here, "..", "lib", "index.js")));
   if (host.name === "dsh-brain-viewer" && typeof host.apply === "function") ok("宿主半边 index.js 可导入");
   else fail("宿主半边");
 } catch (error) {
   fail("宿主半边导入", error.message);
+}
+
+// --- 3. 实时图谱路由（隔离 DSH_HOME，读包内 brain/graph.json） ---
+if (host !== null) {
+  process.env.DSH_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "brain-smoke-"));
+  const routes = [];
+  const hostCtx = { connection: { fetch: { register(route) { routes.push(route); return () => {}; } } } };
+  try {
+    host.apply(hostCtx);
+    const route = routes[0];
+    if (routes.length === 1 && route.path === "/api/dsh-brain/graph" && route.methods.includes("GET")) {
+      ok("注册实时图谱路由 /api/dsh-brain/graph");
+      const res = await route.fetch();
+      const data = JSON.parse(await res.text());
+      if (res.status === 200 && Array.isArray(data.nodes) && data.nodes.length > 0) {
+        ok(`路由返回图谱（${data.nodes.length} 节点 · ${data.edges.length} 连线）`);
+      } else {
+        fail("路由返回数据", `status ${res.status}`);
+      }
+    } else {
+      fail("路由注册", JSON.stringify(routes.map((r) => r.path)));
+    }
+  } catch (error) {
+    fail("路由测试", error.message);
+  }
 }
 
 console.log("");

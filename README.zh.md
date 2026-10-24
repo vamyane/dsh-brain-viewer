@@ -28,12 +28,12 @@ dsh plugin --profile desktop add dsh-brain-viewer
 ```bash
 node tools/rebuild.mjs --workspace "D:/我的笔记"   # 扫描自己的目录
 node tools/rebuild.mjs --demo                      # 恢复演示大脑
-# 刷新 DSH 页面；没变化就完全退出再打开一次
+# 数据写进 brain/graph.json —— 重新打开面板即最新，不用刷新页面
 ```
 
-管线会把笔记写进 `brain/vault/`，再重建 `app/brain.html` 并重新内嵌到 `lib/client.js`。
+管线会把笔记写进 `brain/vault/`，并生成 `brain/graph.json`（面板实时读它）。
 
-## 准实时同步：新资料自动进图谱
+## 实时同步：新资料立刻进图谱
 
 ```bash
 # 盯 ai-brain 的 vault（DSH 技能每次写记忆都会落到这里，改完约 1-3 秒重建）
@@ -43,24 +43,41 @@ node tools/watch.mjs --vault "C:/Users/pc/Documents/deepseek-harness/default-wor
 node tools/watch.mjs --workspace "D:/我的资料"
 ```
 
-变化 → 防抖 2.5s → 自动重建 → `app/brain.html` 更新。**刷新 DSH 页面**即可看到新节点。
+变化 → 防抖 2.5s → 重算 `brain/graph.json`。面板**每次打开都会重新 fetch**
+`/api/dsh-brain/graph`，所以重开面板就是最新，**不需要重新打包、也不需要刷新页面**。
 
-> 这是「准实时」：浏览器半边的 HTML 是构建时内嵌的，所以还不能完全不刷新。
-> 真·实时（运行时加载 `graph.json` + 前端轮询）在路线图里，需要把数据改成 host 路由下发。
+## 数据源（v0.3.0）
 
-## 性能（v0.2.3）
+面板不再内嵌数据，打开时向宿主请求：
+
+```
+GET /api/dsh-brain/graph  →  brain/graph.json
+```
+
+- 默认读插件自己的 `brain/graph.json`（演示数据，或你用 rebuild 生成的数据）。
+- 想指向别处（例如技能维护的 vault 产物），写一个配置文件：
+
+```json
+// ~/.dsh/brain-viewer.config.json
+{ "graphPath": "C:/Users/pc/Documents/deepseek-harness/default-workspace/ai-brain/graph.json" }
+```
+
+改完**重启一次 DSH** 让宿主路由生效；之后数据变化只要重开面板。
+
+## 性能（v0.3.0）
 
 - **WebGL 批量渲染**：节点用 instanced quads、连线用 `gl.LINES` 一次性画完；缩放/平移只改矩阵，不重建几何。6398 节点的图单帧约 **0.6–1.2 ms**（旧版 Canvas2D 逐点绘制约 90 ms/帧）。
 - **按需渲染**：没有动画/交互时**完全不跑 requestAnimationFrame**（静止 0 帧），和 Obsidian 关系图谱同一策略；打开「漂移」或「放电」才会连续出帧。
 - **标签 LOD**：文字按缩放阈值出现，最多 64 个、重叠自动舍弃；标签与高亮单独一层 2D 画布，只画需要的那几十个。
+- **数据走宿主路由**：client.js 从 1 MB 降到 **31 KB**，数据不进包、变更免重打包。
 - 没有 WebGL 的环境自动退回 2D 批量绘制（按类型合并 path），同样保留按需渲染。
-- `brain.html` 以 gzip+base64 内嵌，**打开面板时才解压**；面板关闭即卸载 iframe，不再占用 CPU。
+- 面板关闭即卸载 iframe，不再占用 CPU。
 
 ## 隐私
 
-- 演示数据由 `brain/seed_demo.py` 用通用内容生成。
+- 演示数据由 `brain/seed_demo.py` 用通用内容生成；公开包里不含任何真实笔记。
 - `tools/rebuild.mjs --workspace` 只在本机读文件，不上传任何内容。
-- 图谱在本地 Blob URL 的 iframe 里渲染，不发起网络请求。
+- 数据经本机回环 HTTP `/api/dsh-brain/graph` 读取，需要 DSH 登录态；不连接外部服务。
 
 ## 卸载
 

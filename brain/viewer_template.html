@@ -182,6 +182,7 @@
 <div id="tip"></div>
 
 <script id="brain-data" type="application/json">/*__BRAIN_DATA__*/</script>
+<script>/*__BRAIN_API_BOOTSTRAP__*/</script>
 <script>
 /*
  * viewer v2（2026-10-25）—— 渲染架构照 Obsidian 关系图谱那套思路重做：
@@ -192,15 +193,17 @@
  *   4) 平移/缩放/悬停/选中都只触发一次重绘，不再有常驻 60fps 全量重绘。
  * 布局坐标仍由 build_graph.py 离线算好（运行时不需要物理，这一点比 Obsidian 更省）。
  * 若浏览器没有 WebGL，退回 2D 批量绘制（按类型合并 path）。
+ *
+ * v3（2026-10-25）：数据两种来源——
+ *   · 独立打开（build_graph.py 生成的 brain.html）：数据内嵌，离线可用；
+ *   · DSH 面板（插件内嵌 app/viewer.html）：数据为空 → 打开时 fetch 宿主路由
+ *     /api/dsh-brain/graph，读的是插件 brain/graph.json（或配置里的 graphPath）——
+ *     写完记忆重开面板就是最新，不用重建、不用刷新页面。
  */
-(function(){
+function boot(DATA){
   "use strict";
-
-  var DATA;
-  try { DATA = JSON.parse(document.getElementById('brain-data').textContent); }
-  catch(e){
-    document.body.innerHTML = '<div style="padding:40px;font:15px/1.8 sans-serif">' +
-      '数据还没生成。先在 ai-brain 目录运行：<code>python build_graph.py</code></div>';
+  if (!DATA || !DATA.nodes || !DATA.nodes.length) {
+    showBootError('图谱是空的（0 个节点）。先跑一次管线：<code>node tools/rebuild.mjs --demo</code> 或 <code>--workspace 你的目录</code>。');
     return;
   }
 
@@ -1273,6 +1276,45 @@
   // 供自动化/调试用
   window.__brainForceRender = function(){ invalidate(); };
   invalidate();
+}
+
+// ---------------- 启动：内嵌数据优先，否则向宿主要（DSH 面板）
+function showBootError(msg){
+  document.body.innerHTML = '<div style="padding:40px;font:15px/1.9 sans-serif;color:#334155;line-height:1.9">' +
+    '<b style="font-size:16px">图谱加载失败</b><br>' + msg + '</div>';
+}
+function embeddedData(){
+  var el = document.getElementById('brain-data');
+  if (!el) return null;
+  var t = (el.textContent || '').trim();
+  if (!t || t.charAt(0) !== '{') return null;
+  try {
+    var d = JSON.parse(t);
+    return (d && d.nodes && d.nodes.length) ? d : null;
+  } catch (e) { return null; }
+}
+(function(){
+  var emb = embeddedData();
+  if (emb) { boot(emb); return; }
+  var api = (typeof window.__BRAIN_API__ === 'string' && window.__BRAIN_API__)
+    || '/api/dsh-brain/graph';
+  fetch(api, { cache: 'no-store', credentials: 'same-origin' })
+    .then(function(r){
+      return r.json().catch(function(){ return { error: 'HTTP ' + r.status }; })
+        .then(function(j){
+          if (!r.ok) throw new Error(j && j.error ? j.error : ('HTTP ' + r.status));
+          return j;
+        });
+    })
+    .then(function(d){
+      if (!d || !d.nodes || !d.nodes.length) throw new Error((d && d.error) || '宿主返回了空数据');
+      boot(d);
+    })
+    .catch(function(e){
+      showBootError(String(e && e.message ? e.message : e) +
+        '<br><br>检查数据源：<code>~/.dsh/brain-viewer.config.json</code> 的 <code>graphPath</code>，' +
+        '或插件目录下的 <code>brain/graph.json</code>。');
+    });
 })();
 </script>
 </body>

@@ -62,8 +62,16 @@ if (!fs.existsSync(built)) {
   process.exit(1);
 }
 fs.mkdirSync(path.join(pluginRoot, "app"), { recursive: true });
+// 独立打开用（数据内嵌）
 fs.copyFileSync(built, path.join(pluginRoot, "app", "brain.html"));
+// 面板用（不含数据，打开时 fetch /api/dsh-brain/graph）
+const tpl = fs.readFileSync(path.join(brainDir, "viewer_template.html"), "utf8");
+fs.writeFileSync(
+  path.join(pluginRoot, "app", "viewer.html"),
+  tpl.replace("/*__BRAIN_DATA__*/", ""),
+);
 
 run(process.execPath, [path.join(pluginRoot, "build.mjs")], pluginRoot);
 
-console.log("\n✔ 重建完成。刷新 DSH 页面查看；如果没变化，完全退出 DSH 再打开。");
+console.log("\n✔ 重建完成。数据已写入 brain/graph.json —— 重新打开 DSH 面板即最新（不用刷新页面）。");
+console.log("  模板有改动时才需要刷新 DSH 页面。");
