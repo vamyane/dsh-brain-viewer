@@ -1,7 +1,7 @@
 {
   "name": "dsh-brain-viewer",
-  "version": "0.3.1",
-  "description": "AI brain viewer for DeepSeek Harness: a brain-shaped relationship graph in the left sidebar, plus a Markdown knowledge-base pipeline (import -> compile -> graph).",
+  "version": "0.4.0",
+  "description": "AI brain viewer for DeepSeek Harness: a brain-shaped relationship graph in the left sidebar, a Markdown knowledge-base pipeline, and one-click session auto-review ingest (DSH sessions -> episode memories -> graph).",
   "type": "module",
   "main": "lib/index.js",
   "author": "vamyane",
@@ -40,6 +40,7 @@
   },
   "files": [
     "lib/index.js",
+    "lib/ingest.js",
     "lib/client.js",
     "app/brain.html",
     "app/viewer.html",
@@ -61,6 +62,8 @@
     "build": "node build.mjs",
     "demo": "node tools/rebuild.mjs --demo",
     "test": "node test/smoke.mjs",
+    "test:ingest": "node test/ingest.e2e.mjs",
+    "ingest": "node tools/ingest.mjs",
     "pack:check": "npm pack --dry-run",
     "watch": "node tools/watch.mjs"
   },
@@ -74,6 +77,8 @@
     "obsidian",
     "memory",
     "markdown",
+    "session",
+    "ingest",
     "dsh-plugin",
     "dsh-plugin-panel"
   ],

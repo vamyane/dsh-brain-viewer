@@ -1,9 +1,9 @@
 # 发布到 DSH 插件市场
 
-发布流程（2026-10-25 更新到 0.3.0）：
+发布流程（2026-11-08 更新到 0.4.0）：
 
 1. `node tools/rebuild.mjs --demo` —— **必须**先用演示数据重建（真实 vault 绝不能进公开包）
-2. `npm test` + `npm pack --dry-run` 自检
+2. `npm test` + `npm run test:ingest` + `npm pack --dry-run` 自检
 3. `npm publish --registry=https://registry.npmjs.org --access public`（本机 `~/.npmrc` 已配 npmjs token）
 4. 同步 GitHub 仓库 `vamyane/dsh-brain-viewer`（tag + push）
 5. 给 `awesome-dsh-plugin/awesome-dsh-plugin` 提 PR：`data/plugins/vamyane__dsh-brain-viewer.yml`
@@ -32,7 +32,7 @@ npm view dsh-brain-viewer version --registry=https://registry.npmjs.org
 ## 本地安装（不发布也能用）
 
 ```powershell
-dsh plugin --profile desktop add C:\path\to\dsh-brain-viewer-0.3.0.tgz
+dsh plugin --profile desktop add C:\path\to\dsh-brain-viewer-0.4.0.tgz
 ```
 
 或直接把 `dsh-plugin` 目录复制到 `~/.dsh/profiles/desktop/node_modules/dsh-brain-viewer`，
@@ -43,3 +43,4 @@ dsh plugin --profile desktop add C:\path\to\dsh-brain-viewer-0.3.0.tgz
 - 市场包内是 **演示数据**（`brain/seed_demo.py` 生成，通用内容），已扫描确认不含真实客户/项目信息。
 - 要给自己的大脑用：`node tools/rebuild.mjs --workspace "你的目录"` 之后再打包/安装。
 - 永远不要把带真实 vault 的包发布到公开 registry。
+- v0.4.0 的「会话自动复盘入库」只在**用户本机**读 `~/.dsh/sessions`、写 `~/.dsh/brain-viewer.config.json` 指向的真实 vault；包里不含任何会话内容。没配置真实 vault 时插件拒绝写入，包内演示 vault 不会被污染。

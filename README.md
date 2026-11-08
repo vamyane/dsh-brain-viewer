@@ -14,6 +14,8 @@ knowledge-base pipeline that turns a folder of notes into that graph.
 - **Knowledge pipeline included** — `brain/` ships the full Markdown pipeline:
   scan a workspace (`md` / `docx` / `xlsx`) → split documents into memory units →
   write Obsidian-compatible `[[wiki-link]]` notes → compile the graph.
+- **Session auto-review ingest (v0.4.0)** — one click in the panel header turns today's DSH
+  sessions into episode memories in the vault and rebuilds the graph. Fully local, no LLM calls.
 - **Demo data** — the package ships a generic demo vault, so it works out of the box.
   Nothing personal is bundled.
 
@@ -74,12 +76,61 @@ GET /api/dsh-brain/graph  →  brain/graph.json
 Restart DSH once so the host route is loaded; after that, data changes only need reopening
 the panel.
 
+## Session auto-review ingest (v0.4.0)
+
+Every DSH session is a zstd-compressed JSONL log at
+`~/.dsh/sessions/<workspace>/<session-id>/session.v4.jsonl.zstd`. The panel header now has a
+**Session ingest** button plus a status line (`N ingested today · latest YYYY-MM-DD · M sessions visible`).
+It turns **today's** sessions into one episode memory per session:
+
+| Route | What it does |
+| --- | --- |
+| `GET /api/dsh-brain/ingest/status` | today's ingested count, latest memory date, visible sessions |
+| `POST /api/dsh-brain/ingest/run` | scan today's sessions → write episode notes → rebuild the graph → `{written, updated, skipped, nodes}` |
+
+Extraction is local, deterministic and does **not** call a model: the first real user message
+becomes the title, user intents and the assistant's final text become the body, tool usage is
+summarised, and the note is linked to 2–3 existing hub notes. Notes land in
+`vault/episodes/YYYY-MM/YYYY-MM-DD · 会话复盘 · <title> (<session-id>).md`.
+
+**Idempotent** — each generated note carries `source: dsh-session-ingest` and `session: <id>` in
+its frontmatter. Clicking again rewrites the *same* file only when the session changed; it never
+duplicates notes. Subagent (child) sessions and sessions from other workspaces are skipped by
+default (`includeSubagent: true` to opt in).
+
+Configure the vault — `vault/` and `build_graph.py` are inferred from `graphPath` when possible:
+
+```json
+// ~/.dsh/brain-viewer.config.json
+{
+  "graphPath": "C:/path/to/ai-brain/graph.json",
+  "vaultPath": "C:/path/to/ai-brain/vault",
+  "sessionsPath": "C:/Users/me/.dsh/sessions",
+  "workspaceRoot": "C:/path/to/workspace",
+  "python": "python"
+}
+```
+
+Only `graphPath` or `vaultPath` is required. Without a configured vault the plugin **refuses to
+write**, so the bundled demo vault is never polluted. Same workflow from the CLI:
+
+```bash
+node tools/ingest.mjs --status     # read-only: ingested today / latest memory / visible sessions
+node tools/ingest.mjs --dry-run    # preview which notes would be written, write nothing
+node tools/ingest.mjs              # write episode notes + rebuild the graph
+node tools/ingest.mjs --date 2026-11-08
+```
+
+Requirements: a Node with zstd support for ingest (Node >= 22.15 or >= 23.8; DSH ships Node 24)
+and Python only for the graph rebuild. If `build_graph.py` fails, the notes are still written and
+the response reports `graph.ok: false` plus a warning.
+
 ## Performance (v0.3.1)
 
 - **WebGL batch rendering**: nodes are instanced quads and links a single `gl.LINES` batch; pan/zoom only updates a matrix instead of rebuilding geometry. A 6,398-node graph renders in **0.6–1.2 ms per frame** (the old Canvas2D path was ~90 ms/frame).
 - **Render on demand**: no `requestAnimationFrame` at all while nothing is animating or interacting (0 frames at rest) — the same strategy as Obsidian's graph view. Continuous frames only while the drift / pulse toggles are on.
 - **Label LOD**: labels appear by zoom threshold, capped at 64 with overlap culling; labels and highlights live on a separate 2D overlay that draws only the few needed.
-- **Data over a host route**: `client.js` dropped from 1 MB to **31 KB**; data never ships in the bundle and changes need no repack.
+- **Data over a host route**: `client.js` dropped from 1 MB to ~0.1 MB; data never ships in the bundle and changes need no repack.
 - Without WebGL it falls back to batched 2D paths and still renders on demand.
 - Closing the panel unmounts the iframe, so it costs no CPU when idle.
 

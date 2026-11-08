@@ -11,6 +11,8 @@
 - **知识库管线**：`brain/` 里带完整 Markdown 管线：
   扫描工作区（`md` / `docx` / `xlsx`）→ 按小节拆成记忆单元 → 写 Obsidian 兼容的
   `[[双链]]` 笔记 → 编译成图谱。
+- **会话自动复盘入库（v0.4.0）**：面板右上角一键把「今天」的 DSH 会话压成 episode 记忆写进 vault，
+  顺便重建图谱。全程本地，不调 LLM。
 - **自带演示数据**：开箱即用，不含任何私人内容。
 
 ## 安装
@@ -66,12 +68,57 @@ GET /api/dsh-brain/graph  →  brain/graph.json
 
 改完**重启一次 DSH** 让宿主路由生效；之后数据变化只要重开面板。
 
+## 会话自动复盘入库（v0.4.0）
+
+DSH 每段会话都落在 `~/.dsh/sessions/<工作区>/<会话 id>/session.v4.jsonl.zstd`（zstd 压缩的 JSONL）。
+面板 header 现在有一条工具行：**「复盘入库」按钮** + 状态行
+（`今天已入库 N 条 · 最近记忆 YYYY-MM-DD · 可见会话 M`）。
+
+| 路由 | 作用 |
+| --- | --- |
+| `GET /api/dsh-brain/ingest/status` | 今天已入库条数 / 最近记忆日期 / 可见会话数 |
+| `POST /api/dsh-brain/ingest/run` | 扫描今天的会话 → 写 episode 笔记 → 重建图谱 → `{written, updated, skipped, nodes}` |
+
+抽取是本地启发式的，**不调用任何模型**：首条真人用户消息当标题，用户意图列表 + 助手最终结论当正文，
+再统计一下工具调用，并自动双链到 2–3 篇已有枢纽笔记。笔记写到
+`vault/episodes/YYYY-MM/YYYY-MM-DD · 会话复盘 · <标题> (<会话短 id>).md`。
+
+**幂等**：每篇自动笔记的 frontmatter 里带 `source: dsh-session-ingest` 和 `session: <id>`。
+再点一次只会**原地更新同一篇**（会话有新内容时），不会重复写。子会话（subagent）和其他工作区的会话默认跳过
+（`includeSubagent: true` 可放开）。
+
+vault 配置（能推断就只写 `graphPath`，插件会自动找同目录的 `vault/` 与 `build_graph.py`）：
+
+```json
+// ~/.dsh/brain-viewer.config.json
+{
+  "graphPath": "C:/Users/pc/Documents/deepseek-harness/default-workspace/ai-brain/graph.json",
+  "vaultPath": "C:/Users/pc/Documents/deepseek-harness/default-workspace/ai-brain/vault",
+  "sessionsPath": "C:/Users/pc/.dsh/sessions",
+  "workspaceRoot": "C:/Users/pc/Documents/deepseek-harness/default-workspace",
+  "python": "python"
+}
+```
+
+只写 `graphPath` 或 `vaultPath` 就够。**没配置真实 vault 时插件拒绝写入**，免得把会话写进包里的演示数据。
+命令行也能跑：
+
+```bash
+node tools/ingest.mjs --status     # 只读：今天入库数 / 最近记忆 / 可见会话
+node tools/ingest.mjs --dry-run    # 预览会写哪些笔记，不落盘
+node tools/ingest.mjs              # 真正写入 + 重建图谱
+node tools/ingest.mjs --date 2026-11-08
+```
+
+环境要求：入库需要带 zstd 的 Node（Node >= 22.15 或 >= 23.8；DSH 自带 Node 24）；
+只有重建图谱需要 Python。`build_graph.py` 失败时笔记照常写入，返回里会带 `graph.ok: false` 和告警。
+
 ## 性能（v0.3.1）
 
 - **WebGL 批量渲染**：节点用 instanced quads、连线用 `gl.LINES` 一次性画完；缩放/平移只改矩阵，不重建几何。6398 节点的图单帧约 **0.6–1.2 ms**（旧版 Canvas2D 逐点绘制约 90 ms/帧）。
 - **按需渲染**：没有动画/交互时**完全不跑 requestAnimationFrame**（静止 0 帧），和 Obsidian 关系图谱同一策略；打开「漂移」或「放电」才会连续出帧。
 - **标签 LOD**：文字按缩放阈值出现，最多 64 个、重叠自动舍弃；标签与高亮单独一层 2D 画布，只画需要的那几十个。
-- **数据走宿主路由**：client.js 从 1 MB 降到 **31 KB**，数据不进包、变更免重打包。
+- **数据走宿主路由**：client.js 从 1 MB 降到约 **0.1 MB**，数据不进包、变更免重打包。
 - 没有 WebGL 的环境自动退回 2D 批量绘制（按类型合并 path），同样保留按需渲染。
 - 面板关闭即卸载 iframe，不再占用 CPU。
 
