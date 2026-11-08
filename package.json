@@ -1,6 +1,6 @@
 {
   "name": "dsh-brain-viewer",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "AI brain viewer for DeepSeek Harness: a brain-shaped relationship graph in the left sidebar, plus a Markdown knowledge-base pipeline (import -> compile -> graph).",
   "type": "module",
   "main": "lib/index.js",

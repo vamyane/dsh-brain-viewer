@@ -46,13 +46,15 @@ node tools/watch.mjs --workspace "D:/我的资料"
 变化 → 防抖 2.5s → 重算 `brain/graph.json`。面板**每次打开都会重新 fetch**
 `/api/dsh-brain/graph`，所以重开面板就是最新，**不需要重新打包、也不需要刷新页面**。
 
-## 数据源（v0.3.0）
+## 数据源（v0.3.1）
 
 面板不再内嵌数据，打开时向宿主请求：
 
 ```
 GET /api/dsh-brain/graph  →  brain/graph.json
 ```
+
+面板在 DSH 页面上下文里取数（同源、带登录态）；宿主路由不可用时自动退回构建时快照，右上角会显示「实时」或「快照」。
 
 - 默认读插件自己的 `brain/graph.json`（演示数据，或你用 rebuild 生成的数据）。
 - 想指向别处（例如技能维护的 vault 产物），写一个配置文件：
@@ -64,7 +66,7 @@ GET /api/dsh-brain/graph  →  brain/graph.json
 
 改完**重启一次 DSH** 让宿主路由生效；之后数据变化只要重开面板。
 
-## 性能（v0.3.0）
+## 性能（v0.3.1）
 
 - **WebGL 批量渲染**：节点用 instanced quads、连线用 `gl.LINES` 一次性画完；缩放/平移只改矩阵，不重建几何。6398 节点的图单帧约 **0.6–1.2 ms**（旧版 Canvas2D 逐点绘制约 90 ms/帧）。
 - **按需渲染**：没有动画/交互时**完全不跑 requestAnimationFrame**（静止 0 帧），和 Obsidian 关系图谱同一策略；打开「漂移」或「放电」才会连续出帧。

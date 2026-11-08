@@ -55,7 +55,7 @@ Changes are debounced (2.5s) and the graph is rebuilt in ~1-3s. The panel re-fet
 `/api/dsh-brain/graph` **every time it opens**, so reopening it shows the latest graph —
 no repack, no page refresh.
 
-## Data source (v0.3.0)
+## Data source (v0.3.1)
 
 The panel no longer embeds data; it asks the host:
 
@@ -74,7 +74,7 @@ GET /api/dsh-brain/graph  →  brain/graph.json
 Restart DSH once so the host route is loaded; after that, data changes only need reopening
 the panel.
 
-## Performance (v0.3.0)
+## Performance (v0.3.1)
 
 - **WebGL batch rendering**: nodes are instanced quads and links a single `gl.LINES` batch; pan/zoom only updates a matrix instead of rebuilding geometry. A 6,398-node graph renders in **0.6–1.2 ms per frame** (the old Canvas2D path was ~90 ms/frame).
 - **Render on demand**: no `requestAnimationFrame` at all while nothing is animating or interacting (0 frames at rest) — the same strategy as Obsidian's graph view. Continuous frames only while the drift / pulse toggles are on.

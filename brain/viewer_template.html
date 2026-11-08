@@ -1294,6 +1294,10 @@ function embeddedData(){
   } catch (e) { return null; }
 }
 (function(){
+  // 插件面板：client.js 在「页面上下文」取到数据后注入 __BRAIN_DATA__，iframe 不再自己发请求
+  var injected = window.__BRAIN_DATA__;
+  if (injected && injected.nodes && injected.nodes.length) { boot(injected); return; }
+  if (window.__BRAIN_BOOT_ERROR__) { showBootError(String(window.__BRAIN_BOOT_ERROR__)); return; }
   var emb = embeddedData();
   if (emb) { boot(emb); return; }
   var api = (typeof window.__BRAIN_API__ === 'string' && window.__BRAIN_API__)

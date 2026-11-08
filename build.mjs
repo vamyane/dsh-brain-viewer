@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * 构建 dsh-brain 的浏览器半边：把 app/viewer.html（不含数据）gzip 后内嵌进 lib/client.js。
- * 数据走宿主路由 /api/dsh-brain/graph 实时读，不在包里 —— 所以数据更新不需要重新 build。
+ * 构建 dsh-brain 的浏览器半边：
+ *   - app/viewer.html      gzip 后内嵌（渲染器，不含数据）
+ *   - brain/graph.json     gzip 后内嵌（构建时数据快照，宿主路由不可用时的 fallback）
  * 用法：node build.mjs
  */
 import fs from "node:fs";
@@ -10,24 +11,32 @@ import url from "node:url";
 import zlib from "node:zlib";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
-const brainHtmlPath = path.join(here, "app", "viewer.html");
+const viewerPath = path.join(here, "app", "viewer.html");
+const graphPath = path.join(here, "brain", "graph.json");
 const templatePath = path.join(here, "lib", "client.template.js");
 const outPath = path.join(here, "lib", "client.js");
 
-const brainHtml = fs.readFileSync(brainHtmlPath, "utf8");
+const viewerHtml = fs.readFileSync(viewerPath, "utf8");
+const graphText = fs.existsSync(graphPath) ? fs.readFileSync(graphPath, "utf8") : "{\"nodes\":[],\"edges\":[]}";
 const template = fs.readFileSync(templatePath, "utf8");
-const PLACEHOLDER = "var APP_GZIP_B64 = __BRAIN_GZIP_B64__;";
-if (!template.includes(PLACEHOLDER)) {
-  console.error("模板里找不到 APP_GZIP_B64 占位符");
-  process.exit(1);
+
+const VIEWER_PLACEHOLDER = "var APP_GZIP_B64 = __BRAIN_GZIP_B64__;";
+const GRAPH_PLACEHOLDER = "var GRAPH_GZIP_B64 = __GRAPH_GZIP_B64__;";
+for (const placeholder of [VIEWER_PLACEHOLDER, GRAPH_PLACEHOLDER]) {
+  if (!template.includes(placeholder)) {
+    console.error("模板里找不到占位符：" + placeholder);
+    process.exit(1);
+  }
 }
 
-const gz = zlib.gzipSync(Buffer.from(brainHtml, "utf8"), { level: 9 });
-const b64 = gz.toString("base64");
-const out = template.replace(PLACEHOLDER, "var APP_GZIP_B64 = " + JSON.stringify(b64) + ";");
+const viewerB64 = zlib.gzipSync(Buffer.from(viewerHtml, "utf8"), { level: 9 }).toString("base64");
+const graphB64 = zlib.gzipSync(Buffer.from(graphText, "utf8"), { level: 9 }).toString("base64");
+const out = template
+  .replace(VIEWER_PLACEHOLDER, "var APP_GZIP_B64 = " + JSON.stringify(viewerB64) + ";")
+  .replace(GRAPH_PLACEHOLDER, "var GRAPH_GZIP_B64 = " + JSON.stringify(graphB64) + ";");
 fs.writeFileSync(outPath, out);
 
 const mb = (n) => (n / 1024 / 1024).toFixed(2);
-console.log(`viewer.html     ${mb(Buffer.byteLength(brainHtml))} MB`);
-console.log(`gzip            ${mb(gz.length)} MB`);
+console.log(`viewer.html     ${mb(Buffer.byteLength(viewerHtml))} MB`);
+console.log(`graph.json      ${mb(Buffer.byteLength(graphText))} MB`);
 console.log(`client.js       ${mb(Buffer.byteLength(out))} MB  -> ${outPath}`);
